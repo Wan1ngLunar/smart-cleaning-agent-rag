@@ -11,10 +11,18 @@ import os
 
 class VectorStoreService:
     def __init__(self):
+        persist_directory = get_abs_path(chroma_conf["persist_directory"])
+        md5_hex_store = get_abs_path(chroma_conf["md5_hex_store"])
+
+        os.makedirs(persist_directory, exist_ok=True)
+        os.makedirs(os.path.dirname(md5_hex_store), exist_ok=True)
+
+        self.md5_hex_store = md5_hex_store
+
         self.vector_store = Chroma(
             collection_name=chroma_conf["collection_name"],
             embedding_function=embed_model,
-            persist_directory=chroma_conf["persist_directory"],
+            persist_directory=persist_directory,
         )
 
         self.spliter = RecursiveCharacterTextSplitter(
@@ -35,12 +43,12 @@ class VectorStoreService:
         """
 
         def check_md5_hex(md5_for_check: str):
-            if not os.path.exists(get_abs_path(chroma_conf["md5_hex_store"])):
+            if not os.path.exists(self.md5_hex_store):
                 # 创建文件
-                open(get_abs_path(chroma_conf["md5_hex_store"]), "w", encoding="utf-8").close()
+                open(self.md5_hex_store, "w", encoding="utf-8").close()
                 return False            # md5 没处理过
 
-            with open(get_abs_path(chroma_conf["md5_hex_store"]), "r", encoding="utf-8") as f:
+            with open(self.md5_hex_store, "r", encoding="utf-8") as f:
                 for line in f.readlines():
                     line = line.strip()
                     if line == md5_for_check:
@@ -49,7 +57,7 @@ class VectorStoreService:
                 return False            # md5 没处理过
 
         def save_md5_hex(md5_for_check: str):
-            with open(get_abs_path(chroma_conf["md5_hex_store"]), "a", encoding="utf-8") as f:
+            with open(self.md5_hex_store, "a", encoding="utf-8") as f:
                 f.write(md5_for_check + "\n")
 
         def get_file_documents(read_path: str):
