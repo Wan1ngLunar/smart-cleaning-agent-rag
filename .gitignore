@@ -1,0 +1,35 @@
+# Python 虚拟环境
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 密钥与环境变量
+config/secret.yml
+.env
+.env.*
+!.env.example
+
+# 运行日志
+logs/
+*.log
+
+# Chroma 与索引状态
+**/chroma_db/
+storage/
+md5.text
+
+# 本地备份
+local_backup/
+
+# 系统文件
+.DS_Store
+Thumbs.db
