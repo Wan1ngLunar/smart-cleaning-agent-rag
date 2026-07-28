@@ -1,1 +1,12 @@
 external_data_path: data/external/records.csv
+
+demo:
+  user_id: "1001"
+  user_location: "深圳"
+  weather:
+    condition: "晴天"
+    temperature_c: 26
+    humidity_percent: 50
+    wind: "南风1级"
+    aqi: 21
+    rain_probability: "极低"
