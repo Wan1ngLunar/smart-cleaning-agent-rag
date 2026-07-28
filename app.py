@@ -1,7 +1,9 @@
 import time
+import uuid
 
 import streamlit as st
 from agent.react_agent import ReactAgent
+
 
 # 标题
 st.title("智扫通机器人智能客服")
@@ -10,8 +12,16 @@ st.divider()
 if "agent" not in st.session_state:
     st.session_state["agent"] = ReactAgent()
 
+if "thread_id" not in st.session_state:
+    st.session_state["thread_id"] = str(uuid.uuid4())
+
 if "message" not in st.session_state:
     st.session_state["message"] = []
+
+if st.sidebar.button("新建对话"):
+    st.session_state["thread_id"] = str(uuid.uuid4())
+    st.session_state["message"] = []
+    st.rerun()
 
 for message in st.session_state["message"]:
     st.chat_message(message["role"]).write(message["content"])   #  展示历史对话消息
@@ -25,7 +35,10 @@ if prompt:
 
     response_messages = []
     with st.spinner("智能客服思考中..."):
-        res_stream = st.session_state["agent"].execute_stream(prompt)
+        res_stream = st.session_state["agent"].execute_stream(
+            prompt,
+            thread_id=st.session_state["thread_id"],
+        )
 
         def capture(generator, cache_list):
 
