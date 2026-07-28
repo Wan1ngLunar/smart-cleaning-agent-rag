@@ -173,3 +173,46 @@ Streamlit 使用 `session_state` 显示历史消息，但 `ReactAgent.execute_st
 ### 相关提交
 
 - 与本条记录同一提交：`fix: make demo tools deterministic and explicit`
+
+## 2026-07-28：迁移环境变量并固定项目依赖
+
+### 原问题
+
+项目通过 `config/secret.yml` 加载 DashScope API Key，普通配置模块与敏感信息耦合。克隆仓库后缺少该本地文件会导致项目启动失败，同时项目没有依赖清单，无法在新环境中复现当前已验证的运行版本。
+
+### 修改内容
+
+1. 新增 `requirements.txt`，固定当前运行环境中的11个直接依赖及版本。
+2. 新增 `.env.example`，公开声明项目需要 `DASHSCOPE_API_KEY`，但只保留安全占位符。
+3. 创建被 Git 忽略的本地 `.env`，用于保存真实 DashScope API Key。
+4. 从 `utils/config_handler.py` 中删除 `load_secret_config` 和 `secret_conf`。
+5. 将普通 YAML 配置加载方式从 `yaml.load(..., FullLoader)` 改为 `yaml.safe_load`。
+6. 在 `model/factory.py` 中使用 `python-dotenv` 从项目根目录加载 `.env`。
+7. 系统环境变量优先于本地 `.env`，便于后续容器和服务器部署。
+8. 新增 `get_required_env`，缺少必要变量时返回包含修复方法的明确错误。
+9. 聊天模型和 Embedding 模型统一从 `DASHSCOPE_API_KEY` 环境变量获得凭据。
+10. 在迁移验证通过后删除旧 `config/secret.yml` 及其临时备份。
+
+### 修改意义
+
+- 真实密钥不再保存在项目 YAML 配置中，也不会进入 Git。
+- 新开发者可以根据 `.env.example` 创建自己的本地配置。
+- 缺少环境变量时能够快速失败，避免进入模型 SDK 后才出现难以定位的错误。
+- 精确依赖版本使项目更容易在其他电脑复现。
+- `yaml.safe_load` 限制 YAML 只能构造安全的基础数据类型。
+
+### 验证结果
+
+- `pip check` 输出 `No broken requirements found.`。
+- `.env` 命中 `.gitignore` 规则，不会出现在 Git 状态中。
+- `.env.example` 仅包含 `DASHSCOPE_API_KEY` 安全占位符。
+- `requirements.txt` 包含11个预期依赖，名称和版本与当前环境一致。
+- 项目源码中不再存在 `secret_conf` 或 `load_secret_config` 引用。
+- `model.factory` 通过 `.env` 成功创建 `ChatTongyi` 和 `DashScopeEmbeddings`。
+- 移走旧 `secret.yml` 后，Embedding API 调用成功并返回非空向量。
+- 缺失测试环境变量时成功触发清晰的 `RuntimeError`，输出 `missing_env_fail_fast_ok`。
+- 旧 `config/secret.yml` 和临时备份均已删除，本地 `.env` 保留且被 Git 忽略。
+
+### 相关提交
+
+- 与本条记录同一提交：`chore: add reproducible environment configuration`
