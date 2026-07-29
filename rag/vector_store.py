@@ -12,13 +12,18 @@ from utils.path_tool import get_abs_path
 
 
 class VectorStoreService:
+    """负责知识文档切分、入库和检索器创建。"""
+
     def __init__(self):
+        # 配置中的路径先转为项目绝对路径，避免因启动目录不同生成多份数据库。
         persist_directory = get_abs_path(chroma_conf["persist_directory"])
         md5_hex_store = get_abs_path(chroma_conf["md5_hex_store"])
 
+        # 首次运行时自动创建 Chroma 和导入状态所需目录。
         os.makedirs(persist_directory, exist_ok=True)
         os.makedirs(os.path.dirname(md5_hex_store), exist_ok=True)
 
+        # MD5 状态与 Chroma 共用 storage 根目录，防止数据库和导入记录错位。
         self.md5_hex_store = md5_hex_store
 
         self.vector_store = Chroma(
@@ -27,6 +32,7 @@ class VectorStoreService:
             persist_directory=persist_directory,
         )
 
+        # 使用可配置的重叠分片，减少答案跨分片边界时丢失上下文。
         self.spliter = RecursiveCharacterTextSplitter(
             chunk_size=chroma_conf["chunk_size"],
             chunk_overlap=chroma_conf["chunk_overlap"],
@@ -35,28 +41,25 @@ class VectorStoreService:
         )
 
     def get_retriever(self):
+        """返回固定 top-k 的 Chroma 检索器。"""
         return self.vector_store.as_retriever(search_kwargs={"k": chroma_conf["k"]})
 
     def load_document(self):
-        """
-        从数据文件夹内读取数据文件，转为向量存入向量库
-        要计算文件的MD5做去重
-        :return: None
-        """
+        """读取知识文件、按 MD5 跳过已处理文件，并写入 Chroma。"""
 
         def check_md5_hex(md5_for_check: str):
             if not os.path.exists(self.md5_hex_store):
-                # 创建文件
+                # 首次导入先创建空状态文件；此时任何 MD5 都未处理。
                 open(self.md5_hex_store, "w", encoding="utf-8").close()
-                return False            # md5 没处理过
+                return False
 
             with open(self.md5_hex_store, "r", encoding="utf-8") as f:
                 for line in f.readlines():
                     line = line.strip()
                     if line == md5_for_check:
-                        return True     # md5 处理过
+                        return True
 
-                return False            # md5 没处理过
+                return False
 
         def save_md5_hex(md5_for_check: str):
             with open(self.md5_hex_store, "a", encoding="utf-8") as f:
@@ -77,7 +80,7 @@ class VectorStoreService:
         )
 
         for path in allowed_files_path:
-            # 获取文件的MD5
+            # 文件内容不变时 MD5 不变，可避免重复生成和写入 Embedding。
             md5_hex = get_file_md5_hex(path)
 
             if check_md5_hex(md5_hex):
@@ -97,10 +100,8 @@ class VectorStoreService:
                     logger.warning(f"[加载知识库]{path}分片后没有有效文本内容，跳过")
                     continue
 
-                # 将内容存入向量库
+                # 先成功写入向量库，再保存 MD5；写入失败时下次仍可重试。
                 self.vector_store.add_documents(split_document)
-
-                # 记录这个已经处理好的文件的md5，避免下次重复加载
                 save_md5_hex(md5_hex)
 
                 logger.info(f"[加载知识库]{path} 内容加载成功")
@@ -110,7 +111,7 @@ class VectorStoreService:
                 continue
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     vs = VectorStoreService()
 
     vs.load_document()
@@ -120,6 +121,6 @@ if __name__ == '__main__':
     res = retriever.invoke("迷路")
     for r in res:
         print(r.page_content)
-        print("-"*20)
+        print("-" * 20)
 
 

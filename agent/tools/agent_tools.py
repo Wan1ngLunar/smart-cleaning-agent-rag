@@ -10,9 +10,10 @@ from utils.config_handler import agent_conf
 from utils.logger_handler import logger
 from utils.path_tool import get_abs_path
 
+# RAG 服务在进程内复用，避免每次工具调用都重新连接 Chroma。
 rag = RagSummarizeService()
 
-
+# 缓存结构：用户 ID -> 月份 -> 报告字段 -> 字段内容。
 external_data: dict[str, dict[str, dict[str, str]]] = {}
 
 
@@ -28,6 +29,7 @@ def rag_summarize(query: str) -> str:
     )
 )
 def get_weather(city: str) -> str:
+    # 天气来自明确标注的 Demo 配置，不能在回答中声称为实时查询。
     weather = agent_conf["demo"]["weather"]
 
     return (
@@ -57,6 +59,8 @@ def get_current_month() -> str:
 
 
 def load_external_data() -> None:
+    """一次性加载并校验本地 CSV 演示数据。"""
+    # 已成功加载时直接复用缓存，避免每次报告请求重复读取磁盘。
     if external_data:
         return
 
@@ -67,16 +71,20 @@ def load_external_data() -> None:
             f"外部数据文件 {external_data_path} 不存在"
         )
 
+    # 先写入局部字典；只有完整解析成功后才更新全局缓存，避免留下半成品。
     loaded_data: dict[str, dict[str, dict[str, str]]] = {}
 
     with open(
         external_data_path,
         "r",
+        # utf-8-sig 同时兼容普通 UTF-8 和带 BOM 的 UTF-8 CSV。
         encoding="utf-8-sig",
+        # csv 模块要求 newline=""，以正确处理 Windows 换行和带引号的字段。
         newline="",
     ) as file:
         reader = csv.DictReader(file)
 
+        # 按列名校验数据契约，避免列顺序变化或缺列时静默读错。
         required_columns = {
             "用户ID",
             "特征",
@@ -94,6 +102,7 @@ def load_external_data() -> None:
                 f"外部数据文件缺少必要列：{missing_text}"
             )
 
+        # 第一行是表头，因此数据行号从 2 开始，报错位置与原 CSV 一致。
         for row_number, row in enumerate(reader, start=2):
             user_id = (row.get("用户ID") or "").strip()
             month = (row.get("时间") or "").strip()
@@ -107,6 +116,7 @@ def load_external_data() -> None:
 
             user_records = loaded_data.setdefault(user_id, {})
 
+            # 同一用户同一月份只能有一条记录，否则无法判断哪条是权威数据。
             if month in user_records:
                 raise ValueError(
                     f"外部数据第 {row_number} 行存在重复记录："
@@ -123,6 +133,7 @@ def load_external_data() -> None:
     if not loaded_data:
         raise ValueError("外部数据文件中没有有效记录")
 
+    # 到这里说明整份文件校验通过，再一次性发布到进程缓存。
     external_data.update(loaded_data)
 
 
@@ -135,6 +146,7 @@ def load_external_data() -> None:
 def fetch_external_data(user_id: str, month: str) -> str:
     load_external_data()
 
+    # 工具参数可能由模型生成，先清理首尾空格再查询。
     normalized_user_id = user_id.strip()
     normalized_month = month.strip()
 
@@ -149,6 +161,8 @@ def fetch_external_data(user_id: str, month: str) -> str:
             f"用户 {normalized_user_id}，月份 {normalized_month}"
         )
         return ""
+
+    # LangChain 工具描述约定返回字符串，因此把内部字典序列化为中文 JSON。
     return json.dumps(record, ensure_ascii=False)
 
 

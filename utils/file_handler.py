@@ -7,45 +7,42 @@ from langchain_core.documents import Document
 from utils.logger_handler import logger
 
 
-def get_file_md5_hex(filepath: str):     # 获取文件的md5的十六进制字符串
-
+def get_file_md5_hex(filepath: str) -> str | None:
+    """分块计算文件 MD5；文件无效或读取失败时返回 None。"""
     if not os.path.exists(filepath):
         logger.error(f"[md5计算]文件{filepath}不存在")
-        return
+        return None
 
     if not os.path.isfile(filepath):
         logger.error(f"[md5计算]路径{filepath}不是文件")
-        return
+        return None
 
     md5_obj = hashlib.md5()
 
-    chunk_size = 4096       # 4KB分片，避免文件过大爆内存
+    # 每次只读取 4 KB，避免大文件一次性载入内存。
+    chunk_size = 4096
     try:
-        with open(filepath, "rb") as f:     # 必须二进制读取(rb就是二进制)
+        # 哈希必须基于原始字节计算，不能使用会改变换行或编码的文本模式。
+        with open(filepath, "rb") as f:
             while chunk := f.read(chunk_size):
-                md5_obj.update(chunk)  #  持续累积计算hash值
-
-            """
-            chunk = f.read(chunk_size)
-            while chunk:
-                
                 md5_obj.update(chunk)
-                chunk = f.read(chunk_size)
-            """
-            md5_hex = md5_obj.hexdigest()
-            return md5_hex
+
+            return md5_obj.hexdigest()
     except Exception as e:
         logger.error(f"计算文件{filepath}md5失败，{str(e)}")
         return None
 
 
-def listdir_with_allowed_type(path: str, allowed_types: tuple[str]):        # 返回文件夹内的文件列表（允许的文件后缀）
-    files = []
+def listdir_with_allowed_type(
+    path: str,
+    allowed_types: tuple[str, ...],
+) -> tuple[str, ...]:
+    """返回目录内符合后缀要求的文件路径。"""
+    files: list[str] = []
 
     if not os.path.isdir(path):
-        logger.error(
-            f"[listdir_with_allowed_type]{path}不是文件夹"
-        )
+        logger.error(f"[listdir_with_allowed_type]{path}不是文件夹")
+        # 空元组表示没有文件；不能返回 allowed_types，否则后缀会被当成路径。
         return ()
 
     for f in os.listdir(path):

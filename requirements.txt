@@ -1,11 +1,16 @@
+# Web UI 与 Agent 编排。
 streamlit==1.60.0
 langchain==1.3.14
 langgraph==1.2.9
+
+# 模型集成、向量库和文本处理。
 langchain-community==0.4.2
 langchain-chroma==1.1.0
 langchain-text-splitters==1.1.2
 chromadb==1.5.9
 dashscope==1.26.4
+
+# 环境变量、YAML 与 PDF 读取。
 python-dotenv==1.2.2
 PyYAML==6.0.3
 pypdf==6.14.2

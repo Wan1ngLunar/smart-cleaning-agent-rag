@@ -1,8 +1,10 @@
+# Pytest 只收集 tests/ 下以 test_ 开头的文件。
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra"
 
+# 覆盖率聚焦核心包；Streamlit 页面暂时通过手工功能测试验收。
 [tool.coverage.run]
 source = ["agent", "model", "rag", "utils"]
 omit = [
@@ -13,6 +15,7 @@ omit = [
 show_missing = true
 skip_covered = true
 
+# Ruff 按当前 Python 3.13 环境检查，并跳过本地运行产物。
 [tool.ruff]
 target-version = "py313"
 line-length = 120
@@ -24,4 +27,5 @@ exclude = [
 ]
 
 [tool.ruff.lint]
+# 先建立可落地的错误与导入顺序基线，后续再逐步启用更严格规则。
 select = ["E4", "E7", "E9", "F", "I"]

@@ -8,16 +8,19 @@ from utils.file_handler import (
 
 
 def test_get_file_md5_hex(tmp_path):
-    test_file = tmp_path / "sample.txt" # 在临时目录创建 sample.txt
-    test_file.write_bytes(b"robot-cleaner") # 写入二进制内容：robot-cleaner
+    """项目 MD5 实现应与 Python 标准库结果一致。"""
+    test_file = tmp_path / "sample.txt"
+    test_file.write_bytes(b"robot-cleaner")
 
-    expected = hashlib.md5(b"robot-cleaner").hexdigest() # 原生Python直接计算这段文字的md5，作为标准答案
+    # 标准库直接计算同一字节串，作为被测函数的期望结果。
+    expected = hashlib.md5(b"robot-cleaner").hexdigest()
 
     assert get_file_md5_hex(str(test_file)) == expected
 
 
 def test_listdir_with_allowed_type_filters_files(tmp_path):
-    # 创建3个文件 guide.txt、manual.pdf、records.csv
+    """目录扫描只返回允许的 TXT 和 PDF 文件。"""
+    # 同时创建允许和不允许的后缀，验证过滤逻辑。
     (tmp_path / "guide.txt").write_text(
         "guide",
         encoding="utf-8",
@@ -40,7 +43,8 @@ def test_listdir_with_allowed_type_filters_files(tmp_path):
 def test_listdir_with_allowed_type_returns_empty_for_missing_directory(
     tmp_path,
 ):
-    missing_directory = tmp_path / "missing" # 构造一个不存在的文件夹 tmp_path/missing,为了边界测试
+    """目录不存在时返回空元组，避免把后缀误当成文件路径。"""
+    missing_directory = tmp_path / "missing"
 
     result = listdir_with_allowed_type(
         str(missing_directory),

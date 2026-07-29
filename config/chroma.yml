@@ -1,10 +1,12 @@
 collection_name: agent
+# 数据库和导入状态统一放在被 Git 忽略的 storage 目录。
 persist_directory: storage/chroma
 k: 3
 data_path: data
 md5_hex_store: storage/ingested_md5.txt
 allow_knowledge_file_type: ["txt", "pdf"]
 
+# 文本块保留少量重叠，减少语义在分片边界处被截断。
 chunk_size: 200
 chunk_overlap: 20
 separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
