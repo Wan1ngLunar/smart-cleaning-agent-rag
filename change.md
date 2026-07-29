@@ -362,3 +362,41 @@ Streamlit 使用 `session_state` 显示历史消息，但 `ReactAgent.execute_st
 ### 相关提交
 
 - 与本条记录同一提交：`docs: add project README`
+
+## 2026-07-29：增加持续集成质量门禁
+
+### 原问题
+
+Ruff、pytest和覆盖率只能由开发者在本机手动执行。遗漏检查后仍可能提交存在静态错误、测试回归或覆盖率下降的代码，仓库也缺少可以向招聘者展示的自动化质量验证流程。
+
+### 修改内容
+
+1. 新增`.github/workflows/ci.yml`。
+2. 在代码推送到`master`或`main`、创建或更新Pull Request时自动运行工作流，并支持从GitHub页面手动触发。
+3. 使用当前官方主版本`actions/checkout@v6`和`actions/setup-python@v6`。
+4. 固定CI使用Python 3.13，并根据两个依赖文件缓存pip下载内容。
+5. 将GitHub Token权限限制为只读仓库内容。
+6. 使用测试专用DashScope占位值，不向工作流写入真实API Key。
+7. 自动执行Ruff和完整pytest测试。
+8. 设置60%覆盖率质量门禁，防止低于当前62%基线。
+9. 在README中说明触发条件、执行步骤、密钥边界和远程仓库启用条件。
+
+### 修改意义
+
+- 每次推送和Pull Request都能获得一致、可审查的自动化验证结果。
+- CI不依赖开发者本机环境或真实模型密钥。
+- 覆盖率由展示指标变为可执行的最低质量要求。
+- 同时兼容当前`master`分支和未来可能采用的`main`分支。
+
+### 验证结果
+
+- 工作流YAML按UTF-8读取并通过结构断言，输出`ci_yaml_ok`。
+- Ruff静态检查输出`All checks passed!`。
+- 本地执行与CI相同的pytest覆盖率门禁命令，输出`12 passed, 1 warning`。
+- 实际覆盖率为61.58%，成功达到60%最低要求。
+- 唯一警告仍为已记录的`langchain-community`弃用提醒。
+- GitHub远程仓库尚未配置，在线工作流将在首次推送后验证。
+
+### 相关提交
+
+- 与本条记录同一提交：`ci: add automated quality checks`

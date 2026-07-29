@@ -154,6 +154,18 @@ python -m pytest --cov -q
 
 当前基线为 12 项测试通过，核心模块测试覆盖率为 62%。现有一条 `langchain-community` 弃用警告，已记录为后续依赖迁移事项，没有通过过滤规则隐藏。
 
+## 持续集成
+
+仓库提供 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。推送到 `master` 或 `main`、创建或更新 Pull Request 时，GitHub Actions 会自动：
+
+1. 在 Ubuntu 环境中安装 Python 3.13；
+2. 根据依赖文件缓存并安装开发依赖；
+3. 运行 Ruff 静态检查；
+4. 运行全部测试和覆盖率统计；
+5. 在覆盖率低于 60% 时阻止检查通过。
+
+CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不会在现有测试中调用真实聊天或 Embedding 服务。当前仓库尚未配置远程地址，因此工作流会在首次推送到 GitHub 后开始运行。
+
 ## 可复现的演示场景
 
 可以在页面中依次尝试：
@@ -190,7 +202,7 @@ python -m pytest --cov -q
 - 将内存会话存储替换为可持久化 Checkpointer。
 - 增加 RAG 检索质量评估、引用来源展示和无答案判断。
 - 为 Agent 流程、中间件和 Streamlit 交互补充自动化测试。
-- 增加 Docker、持续集成和部署说明。
+- 增加 Docker 和部署说明，并在配置远程仓库后展示 CI 状态徽章。
 - 迁移已弃用的模型集成依赖，并验证版本兼容性。
 
 ## 改造记录
