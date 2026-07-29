@@ -1,0 +1,9 @@
+# 这是仓库的根配置，不再向父目录查找其他 EditorConfig。
+root = true
+
+# 所有文本文件统一使用无 BOM 的 UTF-8 和 LF 换行。
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true

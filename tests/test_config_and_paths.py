@@ -29,5 +29,5 @@ def test_runtime_paths_are_based_on_project_root():
 def test_demo_configuration_is_deterministic():
     """Demo 配置必须保持固定，防止恢复成随机用户和随机天气。"""
     assert str(agent_conf["demo"]["user_id"]) == "1001"
-    assert agent_conf["demo"]["user_location"] == "\u6df1\u5733"
-    assert agent_conf["demo"]["weather"]["condition"] == "\u6674\u5929"
+    assert agent_conf["demo"]["user_location"] == "深圳"
+    assert agent_conf["demo"]["weather"]["condition"] == "晴天"

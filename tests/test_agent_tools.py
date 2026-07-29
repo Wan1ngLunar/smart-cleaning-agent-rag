@@ -13,10 +13,10 @@ from agent.tools.agent_tools import (
     load_external_data,
 )
 
-# Unicode 转义可避免 Windows 终端编码影响测试源码中的中文断言。
-SHENZHEN = "\u6df1\u5733"
-DEMO = "\u6f14\u793a"
-NOT_REAL_TIME = "\u975e\u5b9e\u65f6"
+# 项目源码统一使用 UTF-8，因此测试常量直接使用可读中文。
+SHENZHEN = "深圳"
+DEMO = "演示"
+NOT_REAL_TIME = "非实时"
 
 
 @pytest.fixture(autouse=True)
@@ -73,12 +73,11 @@ def test_fetch_external_data_returns_json_string():
 
     record = json.loads(result)
 
-    # 分别是“特征、效率、耗材、对比”四个字段。
     assert set(record) == {
-        "\u7279\u5f81",
-        "\u6548\u7387",
-        "\u8017\u6750",
-        "\u5bf9\u6bd4",
+        "特征",
+        "效率",
+        "耗材",
+        "对比",
     }
 
 
