@@ -1,8 +1,10 @@
-import os
 import hashlib
-from utils.logger_handler import logger
-from langchain_core.documents import Document
+import os
+
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_core.documents import Document
+
+from utils.logger_handler import logger
 
 
 def get_file_md5_hex(filepath: str):     # 获取文件的md5的十六进制字符串
@@ -41,8 +43,10 @@ def listdir_with_allowed_type(path: str, allowed_types: tuple[str]):        # �
     files = []
 
     if not os.path.isdir(path):
-        logger.error(f"[listdir_with_allowed_type]{path}不是文件夹")
-        return allowed_types
+        logger.error(
+            f"[listdir_with_allowed_type]{path}不是文件夹"
+        )
+        return ()
 
     for f in os.listdir(path):
         if f.endswith(allowed_types):

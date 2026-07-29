@@ -1,7 +1,8 @@
 import logging
-from utils.path_tool import get_abs_path
 import os
 from datetime import datetime
+
+from utils.path_tool import get_abs_path
 
 # 日志保存的根目录
 LOG_ROOT = get_abs_path("logs")

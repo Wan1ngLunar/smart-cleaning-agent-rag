@@ -1,12 +1,14 @@
+import os
+
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from utils.config_handler import chroma_conf
-from model.factory import embed_model
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from utils.path_tool import get_abs_path
-from utils.file_handler import pdf_loader, txt_loader, listdir_with_allowed_type, get_file_md5_hex
+
+from model.factory import embed_model
+from utils.config_handler import chroma_conf
+from utils.file_handler import get_file_md5_hex, listdir_with_allowed_type, pdf_loader, txt_loader
 from utils.logger_handler import logger
-import os
+from utils.path_tool import get_abs_path
 
 
 class VectorStoreService:

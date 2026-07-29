@@ -216,3 +216,42 @@ Streamlit 使用 `session_state` 显示历史消息，但 `ReactAgent.execute_st
 ### 相关提交
 
 - 与本条记录同一提交：`chore: add reproducible environment configuration`
+
+## 2026-07-29：建立自动化测试与代码质量基线
+
+### 原问题
+
+项目没有自动化测试和覆盖率统计，路径计算、演示工具、CSV 加载及文件处理只能依赖手工验证。`listdir_with_allowed_type` 在目录不存在时错误返回允许的文件后缀元组，调用方可能继续把 `"txt"` 和 `"pdf"` 当作文件路径处理。
+
+### 修改内容
+
+1. 新增 `requirements-dev.txt`，在运行依赖基础上固定 pytest、pytest-cov 和 Ruff 版本。
+2. 新增 `pyproject.toml`，统一配置测试发现、覆盖率统计和 Ruff 检查规则。
+3. 新增 `tests/conftest.py`，使用测试专用占位 Key，避免测试依赖真实 DashScope 凭据。
+4. 新增配置与路径测试，验证项目根目录、统一 Chroma 路径和确定性演示配置。
+5. 新增工具测试，验证固定用户上下文、真实当前月份、天气免责声明、CSV 幂等加载、JSON字符串返回和缺失记录分支。
+6. 新增文件工具测试，验证 MD5、文件类型过滤和目录不存在的边界行为。
+7. 修复 `listdir_with_allowed_type`：目录不存在时返回空元组，不再返回文件后缀。
+
+### 修改意义
+
+- 核心工具和配置变更可以通过自动化测试回归验证。
+- 测试不调用真实聊天模型或 Embedding API，也不要求开发者提供真实测试凭据。
+- 覆盖率报告为后续补测提供可量化基线。
+- 文件扫描失败时返回与函数语义一致的空集合，避免产生虚假路径和级联错误。
+
+### 验证结果
+
+- 首轮测试为9项通过、1项失败，失败项准确定位目录不存在时的错误返回值。
+- 修复后单项回归测试输出 `1 passed`。
+- 完整测试输出 `10 passed, 1 warning`。
+- `agent`、`model`、`rag` 和 `utils` 共356条可执行语句，136条未覆盖，总覆盖率为62%。
+- 当前仍存在1条 `langchain-community` 停止维护的弃用警告，已作为依赖迁移技术债保留，未通过过滤规则隐藏。
+- Ruff 首轮发现13个可安全修复问题，包括10个导入顺序问题和3个无占位符 f-string。
+- Ruff 自动修复13项后再次检查输出 `All checks passed!`。
+- Ruff 修复后完整测试仍为10项通过，覆盖率保持62%。
+- README 编写待完成。
+
+### 相关提交
+
+- 与本条记录同一提交：`test: add automated quality baseline`

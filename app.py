@@ -2,8 +2,8 @@ import time
 import uuid
 
 import streamlit as st
-from agent.react_agent import ReactAgent
 
+from agent.react_agent import ReactAgent
 
 # 标题
 st.title("智扫通机器人智能客服")
