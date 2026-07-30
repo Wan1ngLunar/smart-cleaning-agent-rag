@@ -1,5 +1,7 @@
 # 智扫通：基于 Agent 与 RAG 的机器人智能客服
 
+[![CI](https://github.com/Wan1ngLunar/smart-cleaning-agent-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Wan1ngLunar/smart-cleaning-agent-rag/actions/workflows/ci.yml)
+
 智扫通是一个面向扫地机器人的智能客服项目，基于 LangChain、LangGraph、Chroma 和 Streamlit 构建。系统能够调用知识库检索、演示天气、用户信息和设备使用记录等工具，并支持多轮对话与个性化使用报告生成。
 
 > 本项目用于技术学习和功能演示。用户身份、地理位置、天气及设备记录均为本地演示数据，不代表真实业务系统或实时接口。
@@ -164,7 +166,7 @@ python -m pytest --cov -q
 4. 运行全部测试和覆盖率统计；
 5. 在覆盖率低于 60% 时阻止检查通过。
 
-CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不会在现有测试中调用真实聊天或 Embedding 服务。当前仓库尚未配置远程地址，因此工作流会在首次推送到 GitHub 后开始运行。
+CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不会在现有测试中调用真实聊天或 Embedding 服务。工作流已在 GitHub 的 Ubuntu Runner 中完成首次在线验证，状态为 Success。
 
 ## 可复现的演示场景
 
@@ -202,7 +204,7 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - 将内存会话存储替换为可持久化 Checkpointer。
 - 增加 RAG 检索质量评估、引用来源展示和无答案判断。
 - 为 Agent 流程、中间件和 Streamlit 交互补充自动化测试。
-- 增加 Docker 和部署说明，并在配置远程仓库后展示 CI 状态徽章。
+- 增加 Docker 和部署说明。
 - 迁移已弃用的模型集成依赖，并验证版本兼容性。
 
 ## 改造记录

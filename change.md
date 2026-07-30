@@ -395,8 +395,44 @@ Ruff、pytest和覆盖率只能由开发者在本机手动执行。遗漏检查�
 - 本地执行与CI相同的pytest覆盖率门禁命令，输出`12 passed, 1 warning`。
 - 实际覆盖率为61.58%，成功达到60%最低要求。
 - 唯一警告仍为已记录的`langchain-community`弃用提醒。
-- GitHub远程仓库尚未配置，在线工作流将在首次推送后验证。
+- GitHub Actions首次在线运行完成，工作流和`Ruff and pytest`任务状态均为`Success`。
 
 ### 相关提交
 
 - 与本条记录同一提交：`ci: add automated quality checks`
+
+## 2026-07-30：发布GitHub仓库并展示CI状态
+
+### 原问题
+
+项目和提交历史只保存在本地，招聘者无法通过链接查看代码、README和工程化改造过程。README也没有展示持续集成的在线运行状态。
+
+### 修改内容
+
+1. 将本地主分支从`master`重命名为`main`。
+2. 配置远程仓库`Wan1ngLunar/smart-cleaning-agent-rag`并完成首次推送。
+3. 确认GitHub Actions自动触发，工作流状态为`Success`。
+4. 在README标题下增加可点击的CI状态徽章。
+5. 将README中“远程仓库尚未配置”的旧说明替换为首次在线验证结果。
+6. 从后续计划中移除已经完成的CI徽章事项。
+
+### 修改意义
+
+- 简历可以直接链接到公开仓库，展示源码、提交历史、测试和设计文档。
+- CI徽章能够在仓库首页直观显示最近一次自动化质量检查结果。
+- 本地主分支与GitHub常用的`main`命名保持一致。
+- 本地验证与云端Ubuntu环境验证共同证明项目具备跨环境复现能力。
+
+### 验证结果
+
+- 本地当前分支为`main`，`origin`的读取和推送地址均指向目标GitHub仓库。
+- 首次在线CI工作流和`Ruff and pytest`任务均显示绿色`Success`。
+- CI徽章使用目标仓库中`ci.yml`工作流的标准链接，本次文档提交推送后由GitHub渲染。
+- Git差异检查无输出，未发现空白或补丁格式错误。
+- Ruff静态检查输出`All checks passed!`。
+- 完整自动化测试输出`12 passed, 1 warning`，其中包含UTF-8文本守卫。
+- 唯一警告仍为已记录的`langchain-community`弃用提醒。
+
+### 相关提交
+
+- 与本条记录同一提交：`docs: add CI status badge`
