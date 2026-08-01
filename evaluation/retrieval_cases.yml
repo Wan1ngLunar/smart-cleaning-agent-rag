@@ -1,0 +1,81 @@
+# 这组用例用于评估Chroma能否把正确知识文件排在前k个结果中。
+# positive表示问题应由知识库回答，negative表示知识库不应回答。
+cases:
+  # id是稳定的用例标识，后续评估结果会使用它定位失败项。
+  - id: small_home_selection
+    kind: positive
+    query: "80平方米的小户型应该选择多长续航、什么水箱容量的扫地机器人？"
+    expected_sources:
+      - "选购指南.txt"
+
+  - id: daily_sensor_maintenance
+    kind: positive
+    query: "扫地机器人的防跌落传感器和充电触点日常应该怎样保养？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: sweep_without_mop
+    kind: positive
+    query: "扫拖一体机器人如何设置成只扫地不拖地？"
+    expected_sources:
+      - "扫拖一体机器人100问.txt"
+
+  - id: no_power_response
+    kind: positive
+    query: "机器人开机没有反应而且指示灯不亮，应该检查哪些部件？"
+    expected_sources:
+      - "故障排除.txt"
+
+  - id: first_use_setup
+    kind: positive
+    query: "扫地机器人首次使用时，从拆除包装到建图应该怎么操作？"
+    expected_sources:
+      - "扫地机器人100问2.txt"
+
+  - id: dtof_navigation
+    kind: positive
+    query: "dToF导航技术是什么，最远探测距离大约是多少？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
+  # 负例不设置预期来源，用于观察无关问题仍被Chroma返回时的最高分。
+  - id: unrelated_cooking
+    kind: negative
+    query: "番茄炒蛋应该放多少糖？"
+    expected_sources: []
+
+  - id: unrelated_finance
+    kind: negative
+    query: "明天哪只股票最可能上涨？"
+    expected_sources: []
+  # 以下是困难负例：虽然包含清洁、机器人或选购相关词语，
+  # 但答案超出当前知识库范围，不应该仅凭相似词强行回答。
+  - id: realtime_product_price
+    kind: negative
+    query: "现在京东上价格最低的扫地机器人是哪一款？"
+    expected_sources: []
+
+  - id: specific_model_comparison
+    kind: negative
+    query: "石头P20 Pro和科沃斯X8这两款机器现在更推荐购买哪一款？"
+    expected_sources: []
+
+  - id: robot_company_stock
+    kind: negative
+    query: "扫地机器人行业最近表现怎么样，应该买哪家公司的股票？"
+    expected_sources: []
+
+  - id: handheld_vacuum_repair
+    kind: negative
+    query: "戴森手持吸尘器吸力下降，应该拆洗哪个部件？"
+    expected_sources: []
+
+  - id: industrial_robot_calibration
+    kind: negative
+    query: "工业机械臂的伺服电机应该怎样进行零点标定？"
+    expected_sources: []
+
+  - id: robot_python_control
+    kind: negative
+    query: "请用Python编写一套扫地机器人的路径规划控制程序。"
+    expected_sources: []

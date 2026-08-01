@@ -1,9 +1,10 @@
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 from model.factory import chat_model
 from rag.vector_store import VectorStoreService
+from utils.config_handler import rag_conf
 from utils.logger_handler import logger
 from utils.prompt_loader import load_rag_prompts
 
@@ -12,6 +13,8 @@ NO_CONTEXT_RESPONSE = (
     "暂时无法基于知识库回答该问题。"
 )
 EMPTY_ANSWER_RESPONSE = "已检索到参考资料，但模型未生成有效回答。"
+# 模型判断资料不足时返回该内部标记，最终不会直接展示给用户。
+INSUFFICIENT_CONTEXT_MARKER = "__INSUFFICIENT_CONTEXT__"
 
 
 class RagSummarizeService:
@@ -19,18 +22,49 @@ class RagSummarizeService:
 
     def __init__(self):
         self.vector_store = VectorStoreService()
-        self.retriever = self.vector_store.get_retriever()
+
+        # 从配置读取低分过滤门槛，避免在业务代码中写死具体数值。
+        self.min_relevance_score = float(
+            rag_conf["min_relevance_score"]
+        )
+
+        # 相关性分数应使用0到1之间的门槛，配置错误时立即停止启动。
+        if not 0 <= self.min_relevance_score <= 1:
+            raise ValueError(
+                "min_relevance_score必须在0到1之间"
+            )
+
         self.prompt_text = load_rag_prompts()
-        self.prompt_template = PromptTemplate.from_template(self.prompt_text)
+
+        # 将知识库边界放入System消息，提高资料充分性约束的优先级。
+        self.prompt_template = self._build_prompt_template()
         self.model = chat_model
         self.chain = self._init_chain()
+
+    def _build_prompt_template(self) -> ChatPromptTemplate:
+        """将知识库规则与用户输入放入不同角色的消息。"""
+        return ChatPromptTemplate.from_messages(
+            [
+                # System消息只保存长期规则，不混入用户问题和检索内容。
+                ("system", self.prompt_text),
+                (
+                    "human",
+                    "用户提问：\n{input}\n\n"
+                    "参考资料：\n{context}",
+                ),
+            ]
+        )
 
     def _init_chain(self):
         # 不再打印完整 Prompt，避免用户问题和知识文档内容进入终端日志。
         return self.prompt_template | self.model | StrOutputParser()
 
-    def retriever_docs(self, query: str) -> list[Document]:
-        return self.retriever.invoke(query)
+    def retriever_docs(
+            self,
+            query: str,
+    ) -> list[tuple[Document, float]]:
+        """返回知识片段及其相关性分数，供低分过滤使用。"""
+        return self.vector_store.search_with_relevance_scores(query)
 
     @staticmethod
     def _format_source(document: Document) -> str:
@@ -86,15 +120,21 @@ class RagSummarizeService:
 
     def rag_summarize(self, query: str) -> str:
         """基于有效检索片段回答问题；无资料时不调用模型。"""
+        scored_documents = self.retriever_docs(query)
+
         context_docs = [
             document
-            for document in self.retriever_docs(query)
+            for document, score in scored_documents
+            # 同时过滤空白片段和低于最低相关性分数的片段。
             if document.page_content.strip()
-        ]  #  过滤空白文档
+               and score >= self.min_relevance_score
+        ]
 
         if not context_docs:
             # 日志只记录结果数量，不记录可能包含隐私信息的用户原始问题。
-            logger.warning("[rag_summarize]未检索到有效知识片段")
+            logger.warning(
+                "[rag_summarize]未检索到达到最低相关性分数的有效知识片段"
+            )
             return NO_CONTEXT_RESPONSE
 
         context, sources = self._build_context_and_sources(context_docs)
@@ -111,6 +151,13 @@ class RagSummarizeService:
                 }
             )
         ).strip()
+
+        if answer == INSUFFICIENT_CONTEXT_MARKER:
+            # 模型确认资料不能直接回答问题时，不向用户展示内部标记或无关来源。
+            logger.warning(
+                "[rag_summarize]检索片段与问题相关，但资料不足以直接回答"
+            )
+            return NO_CONTEXT_RESPONSE
 
         if not answer:
             logger.warning("[rag_summarize]模型未生成有效回答")

@@ -44,6 +44,24 @@ class VectorStoreService:
         """返回固定 top-k 的 Chroma 检索器。"""
         return self.vector_store.as_retriever(search_kwargs={"k": chroma_conf["k"]})
 
+    def search_with_relevance_scores(
+            self,
+            query: str,
+            k: int | None = None,
+    ) -> list[tuple[Document, float]]:
+        """返回文档及相关性分数，分数越高表示与问题越相关。"""
+        # 没有单独指定k时，复用Chroma配置中的默认检索数量。
+        result_count = chroma_conf["k"] if k is None else k
+
+        # 0或负数没有合理的检索语义，直接报错比静默返回空结果更容易排查。
+        if result_count <= 0:
+            raise ValueError("k必须是大于0的整数")
+
+        return self.vector_store.similarity_search_with_relevance_scores(
+            query,
+            k=result_count,
+        )
+
     def load_document(self):
         """读取知识文件、按 MD5 跳过已处理文件，并写入 Chroma。"""
 

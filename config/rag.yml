@@ -1,2 +1,5 @@
 chat_model_name: qwen3-max
 embedding_model_name: text-embedding-v4
+# 低于该分数的片段不发送给模型，用于过滤明显无关的检索结果。
+# 该值只负责第一层粗过滤，不能单独判断知识库是否能够回答问题。
+min_relevance_score: 0.20
