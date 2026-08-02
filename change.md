@@ -607,3 +607,61 @@ Agent使用`InMemorySaver`按`thread_id`保存多轮消息，Streamlit进程退�
 ### 相关提交
 
 - 本次改动使用中文提交说明：`功能：实现SQLite持久化会话`
+
+## 2026-08-02：增加Docker容器化运行支持
+
+### 原问题
+
+- 项目只能依赖本机Python虚拟环境启动，缺少可复现的容器运行方式。
+- 本地`.env`、虚拟环境、Chroma数据库、SQLite会话、日志和备份不应进入镜像构建上下文。
+- 容器删除或重建后需要保留知识索引、会话检查点和运行日志。
+- 应用需要以普通用户运行，同时仍能写入`storage`和`logs`运行目录。
+
+### 修改内容
+
+1. 新增`.dockerignore`，排除Git内部数据、IDE配置、虚拟环境、Python缓存、测试产物、真实环境变量文件、本地存储、日志和备份。
+2. 保留不包含真实密钥的`.env.example`，真实`.env`不进入镜像构建上下文。
+3. 新增`Dockerfile`，使用官方`python:3.13-slim`基础镜像，与项目验证版本保持一致。
+4. 先复制并安装固定版本的`requirements.txt`，再复制业务代码，使仅修改代码时可以复用依赖安装缓存。
+5. 设置Python即时日志、禁止字节码和pip缓存等容器环境选项。
+6. 创建无登录权限的`appuser`普通用户，应用不以`root`身份运行。
+7. 提前创建`/app/storage`和`/app/logs`，只将必要运行目录的写权限交给`appuser`。
+8. 暴露Streamlit的8501端口，并绑定`0.0.0.0`以允许宿主机浏览器访问。
+9. 使用Streamlit内置健康接口增加Docker健康检查，该检查不调用DashScope模型。
+10. 新增`compose.yml`，统一配置镜像构建、容器名称、轻量init进程、端口映射和重启策略。
+11. Compose通过本地`.env`在运行时注入DashScope密钥，不在Dockerfile或镜像中保存真实值。
+12. 将宿主机`storage/`和`logs/`分别挂载到容器运行目录，使向量库、SQLite会话和日志在容器重建后保留。
+13. 在README补充Docker Compose构建、知识库初始化、启动、状态检查、日志查看、停止和代理安全说明。
+
+### 修改意义
+
+- 新开发者只需准备Docker Desktop和本地`.env`即可复现统一的Python与依赖环境。
+- 构建上下文过滤和运行时密钥注入降低了将API Key写入镜像历史的风险。
+- 非root运行、最小写权限和健康检查提升了容器的安全性与可运维性。
+- Compose将较长的`docker run`参数保存为可审查配置，并提供一条命令启动的演示方式。
+- 宿主机目录挂载使容器生命周期与业务数据生命周期分离，重启或重建不会丢失本地知识索引和会话。
+- 网络代理不固化到仓库，避免把个人代理地址、端口或凭据传播给其他开发者。
+
+### 实施过程中的修正
+
+- 首次构建发现Dockerfile的JSON形式`CMD`不能像Python列表一样直接跨行，将其改为单行JSON数组后通过解析。
+- 首次运行发现普通用户无法创建`/app/logs`，在镜像构建阶段同时创建`storage`和`logs`并授予定向写权限后修复。
+- Docker Hub基础镜像下载曾因本机代理路径超时；通过Docker Desktop代理设置完成镜像拉取，没有把代理配置写入仓库。
+- 容器访问DashScope曾出现`SSLEOFError`；对比Windows与容器的直连TLS后，最终使用Docker Desktop的`No proxy`模式直连，未关闭证书验证或在业务代码中加入不安全绕过。
+
+### 验证结果
+
+- Docker客户端、Docker Desktop服务端和Docker Compose版本检查正常，官方`hello-world`容器运行成功。
+- `docker build --tag smart-cleaning-agent:local .`成功构建本地镜像。
+- `docker compose config --quiet`无输出，Compose配置校验通过。
+- `docker compose up --build --detach`成功启动服务，`docker compose ps`显示容器状态为`healthy`。
+- 浏览器可通过`http://localhost:8501`访问应用，真实RAG问题能够正常生成回答并显示参考来源。
+- 容器内`id`结果显示应用使用`appuser`而不是`root`运行。
+- 镜像配置检查确认不包含`DASHSCOPE_API_KEY`，真实密钥仅存在于运行时容器环境。
+- 重启Compose服务后，同一`thread_id`的聊天记录能够从挂载的SQLite检查点恢复。
+- 宿主机`storage/`和`logs/`目录均存在，运行数据和日志挂载生效。
+- Windows虚拟环境和容器分别直连DashScope根地址，均返回HTTP 404并完成TLS握手，证明最终容器网络路径可用。
+
+### 相关提交
+
+- 本次改动计划使用中文提交说明：`功能：增加Docker容器化运行支持`

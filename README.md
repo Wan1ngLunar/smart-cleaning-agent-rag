@@ -15,6 +15,7 @@
 - **持久化多轮记忆**：使用 LangGraph SQLite Checkpointer 保存会话状态，以 URL 中的 UUID 隔离会话并支持应用重启恢复。
 - **个性化报告生成**：根据本地 CSV 中的设备使用记录生成月度报告和保养建议。
 - **确定性演示数据**：固定演示用户和城市，避免随机数据导致结果不可复现。
+- **容器化交付**：使用非 root Docker 镜像和 Docker Compose 一键启动，提供健康检查、运行时密钥注入及数据库与日志持久化挂载。
 - **工程化保障**：提供环境变量管理、自动化测试、覆盖率统计和 Ruff 静态检查。
 
 ## 技术栈
@@ -28,6 +29,7 @@
 | 向量数据库 | Chroma |
 | 会话持久化 | LangGraph SQLite Checkpointer |
 | 数据与配置 | CSV、YAML、python-dotenv |
+| 容器化 | Docker、Docker Compose |
 | 测试与质量 | pytest、pytest-cov、Ruff |
 
 ## 系统架构
@@ -78,6 +80,9 @@ flowchart TD
 ├─ tests/                 # 自动化测试与文本编码守卫
 ├─ utils/                 # 配置、文件、日志、路径和 Prompt 工具
 ├─ app.py                 # Streamlit 应用入口
+├─ Dockerfile             # 非 root 用户、健康检查和Streamlit启动配置
+├─ compose.yml            # 端口、密钥和持久化目录编排
+├─ .dockerignore          # 排除密钥、虚拟环境和本地运行数据
 ├─ requirements.txt       # 固定版本的运行依赖
 ├─ requirements-dev.txt   # 测试与静态检查依赖
 ├─ pyproject.toml         # pytest、coverage 和 Ruff 配置
@@ -138,6 +143,33 @@ python -m streamlit run app.py
 启动后访问终端显示的本地地址。页面会把合法的 `thread_id` 写入 URL；使用同一完整 URL 可以在应用重启后恢复模型状态和页面聊天历史。点击侧边栏的“新建对话”会生成新 UUID、清空页面消息并切换到隔离会话。
 
 URL 中的 UUID 相当于本地会话访问标识。当前演示没有登录和权限校验，不应公开分享包含真实对话的完整 URL。
+
+### 5. 使用 Docker Compose 启动
+
+首次启动前仍需按照第2步在项目根目录创建本地`.env`。Docker构建上下文会通过`.dockerignore`排除真实密钥、虚拟环境、数据库、日志和本地备份；`.env`只在容器运行时注入，不会写入镜像。
+
+```powershell
+# 构建镜像并在后台启动应用。
+docker compose up --build --detach
+
+# 首次运行或知识文档发生变化时，将data中的文档导入宿主机挂载的Chroma目录。
+docker compose run --rm app python -m rag.vector_store
+
+# 查看容器是否进入healthy状态。
+docker compose ps
+
+# 查看最近的应用日志，不输出本地.env文件内容。
+docker compose logs --tail 100 app
+```
+
+启动后访问`http://localhost:8501`。`storage/`和`logs/`分别挂载到容器内的`/app/storage`和`/app/logs`，因此重建或重启容器不会删除向量库、SQLite会话和宿主机日志。
+
+```powershell
+# 停止并删除Compose容器和项目网络；宿主机挂载的数据与本地镜像会保留。
+docker compose down
+```
+
+镜像使用普通用户`appuser`运行，并通过Streamlit内置健康接口检查服务。Docker Desktop的镜像下载代理与容器访问模型API的网络路径可能不同；代理应在Docker Desktop或本机网络工具中按环境配置，不应把代理地址、端口或凭据固化到Dockerfile、Compose文件或代码仓库。
 
 ### DashScope 连接被重置
 
@@ -233,6 +265,8 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - **混合拒答**：低相关性粗过滤减少无效模型调用；高分结果由 System 级设备范围、问题对象和时效规则继续判断，资料不足时不附加误导性来源。
 - **评估可回归**：固定 YAML 用例同时衡量正确来源排名和无答案行为；离线指标计算不依赖真实模型，真实可回答性评估可按冒烟或全量模式运行。
 - **安全配置**：模型密钥从环境变量加载；系统环境变量优先于本地 `.env`，缺失时快速失败并给出修复提示。
+- **容器安全**：构建上下文排除密钥与本地产物，镜像以无登录权限的普通用户运行；密钥只在容器启动时注入，健康检查不调用模型API。
+- **容器持久化**：Compose将Chroma、SQLite和日志映射到宿主机目录，容器重建后仍可恢复知识索引与历史会话。
 - **演示边界**：固定用户、城市和天气均明确标注为演示数据，不冒充真实业务接口。
 - **自动化守卫**：测试覆盖关键配置、路径、工具、CSV、文件边界和 UTF-8 文本规范。
 
@@ -243,7 +277,7 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - 天气、用户身份和设备记录来自本地演示配置，不是实时外部服务。
 - Chroma 使用本地持久化目录，暂未提供独立向量数据库服务。
 - 当前评估集为 14 条人工设计用例，能够建立回归基线，但不能代表所有真实用户问题；真实模型判断还可能随模型版本变化。
-- 当前没有用户登录、权限隔离、限流、监控告警和生产部署配置。
+- 当前容器配置面向本地单机演示，尚未提供用户登录、权限隔离、限流、监控告警、TLS入口和多实例生产编排。
 - `langchain-community` 中的通义模型集成已提示弃用，后续需要迁移到独立维护的集成包。
 
 ## 后续计划
@@ -253,7 +287,7 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - 扩充检索评估集，引入更多真实问法、困难负例和持续指标对比。
 - 评估重排序或结构化可回答性分类，进一步降低对生成模型边界判断的依赖。
 - 为 Agent 流程、中间件和 Streamlit 交互补充自动化测试。
-- 增加 Docker 和部署说明。
+- 增加公开部署所需的身份认证、TLS入口、监控告警和多实例编排。
 - 迁移已弃用的模型集成依赖，并验证版本兼容性。
 
 ## 改造记录

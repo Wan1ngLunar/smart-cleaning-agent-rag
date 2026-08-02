@@ -1,0 +1,32 @@
+# 定义项目包含的容器服务。
+services:
+  app:
+    # 使用当前项目目录的Dockerfile构建镜像。
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # 为构建结果设置固定的本地镜像名称。
+    image: smart-cleaning-agent:local
+
+    # 设置容易在Docker Desktop中识别的容器名称。
+    container_name: smart-cleaning-agent
+
+    # 通过轻量init进程正确转发停止信号并回收子进程。
+    init: true
+
+    # 运行时读取密钥，密钥不会被写进镜像。
+    env_file:
+      - .env
+
+    # 将Windows的8501端口映射到容器的8501端口。
+    ports:
+      - "8501:8501"
+
+    # 将数据库和日志保存到项目本地目录。
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+
+    # Docker重启后自动恢复服务，手动停止的容器不会自动启动。
+    restart: unless-stopped
