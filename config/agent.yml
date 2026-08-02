@@ -1,5 +1,8 @@
 external_data_path: data/external/records.csv
 
+# LangGraph会话检查点保存在本地SQLite中，storage目录不会提交到Git。
+checkpoint_path: storage/checkpoints/agent.sqlite3
+
 # 以下内容只用于可重复演示，不代表真实用户或实时天气接口。
 demo:
   user_id: "1001"
