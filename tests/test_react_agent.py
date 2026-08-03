@@ -1,3 +1,5 @@
+import logging
+import re
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +10,10 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from agent.react_agent import ReactAgent
+from agent.react_agent import (
+    AgentExecutionError,
+    ReactAgent,
+)
 from utils.config_handler import agent_conf
 
 
@@ -176,3 +181,119 @@ def test_react_agent_history_only_returns_visible_messages(
         ]
     finally:
         agent.close()
+
+def test_execute_stream_logs_success_without_query(
+    caplog: pytest.LogCaptureFixture,
+):
+    """成功请求应记录编号和耗时，但不能记录用户完整问题。"""
+    observed_context: dict[str, object] = {}
+
+    class SuccessfulAgent:
+        """提供固定流式结果，避免测试调用真实模型。"""
+
+        def stream(self, *args, **kwargs):
+            # 保存运行时上下文，用于验证请求编号是否传给中间件。
+            observed_context.update(
+                kwargs["context"]
+            )
+
+            yield {
+                "messages": [
+                    AIMessage(
+                        content="这是测试回答"
+                    )
+                ]
+            }
+
+    # 绕过正式初始化，避免创建SQLite连接和真实LangGraph Agent。
+    react_agent = ReactAgent.__new__(
+        ReactAgent
+    )
+    react_agent.agent = SuccessfulAgent()
+
+    private_query = "这是一条不应进入日志的用户问题"
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="agent",
+    ):
+        result = list(
+            react_agent.execute_stream(
+                private_query,
+                thread_id="12345678-secret-session",
+            )
+        )
+
+    assert result == [
+        "这是测试回答\n"
+    ]
+    assert re.fullmatch(
+        r"[0-9a-f]{12}",
+        str(observed_context["request_id"]),
+    )
+    assert observed_context["session_id"] == "12345678"
+    assert "请求开始" in caplog.text
+    assert "请求成功" in caplog.text
+    assert "elapsed_ms=" in caplog.text
+
+    # 日志可以记录编号和会话前缀，但不能记录完整用户问题。
+    assert private_query not in caplog.text
+    assert "secret-session" not in caplog.text
+
+def test_execute_stream_wraps_failure_with_request_id(
+    caplog: pytest.LogCaptureFixture,
+):
+    """底层异常应写入日志，但页面只能收到安全提示。"""
+
+    class FailingAgent:
+        """模拟模型连接失败，不发起任何真实网络请求。"""
+
+        def stream(self, *args, **kwargs):
+            raise ConnectionError(
+                "模拟的上游连接失败"
+            )
+
+    # 绕过正式初始化，让测试只关注execute_stream异常边界。
+    react_agent = ReactAgent.__new__(
+        ReactAgent
+    )
+    react_agent.agent = FailingAgent()
+
+    with caplog.at_level(
+        logging.ERROR,
+        logger="agent",
+    ):
+        with pytest.raises(
+            AgentExecutionError
+        ) as captured_error:
+            list(
+                react_agent.execute_stream(
+                    "测试问题",
+                    thread_id="failure-session",
+                )
+            )
+
+    safe_error = captured_error.value
+
+    assert re.fullmatch(
+        r"[0-9a-f]{12}",
+        safe_error.request_id,
+    )
+    assert safe_error.request_id in (
+        safe_error.public_message
+    )
+    assert "模拟的上游连接失败" not in (
+        safe_error.public_message
+    )
+
+    # 服务端日志保留编号和异常类型，开发者可以据此排查。
+    assert safe_error.request_id in caplog.text
+    assert "error_type=ConnectionError" in (
+        caplog.text
+    )
+
+    # 保留异常因果链，但页面不会直接展示该底层异常。
+    assert isinstance(
+        safe_error.__cause__,
+        ConnectionError,
+    )

@@ -156,10 +156,12 @@ def fetch_external_data(user_id: str, month: str) -> str:
     ).get(normalized_month)
 
     if record is None:
-        logger.warning(
-            "[fetch_external_data]未检索到演示使用记录："
-            f"用户 {normalized_user_id}，月份 {normalized_month}"
-        )
+        if record is None:
+            # 只记录查询未命中，不把用户ID和月份等工具参数写入日志。
+            logger.warning(
+                "[fetch_external_data]未检索到匹配的演示使用记录"
+            )
+            return ""
         return ""
 
     # LangChain 工具描述约定返回字符串，因此把内部字典序列化为中文 JSON。

@@ -2,7 +2,11 @@ import time
 
 import streamlit as st
 
-from agent.react_agent import ReactAgent
+# AgentExecutionError只向页面提供安全提示和问题编号。
+from agent.react_agent import (
+    AgentExecutionError,
+    ReactAgent,
+)
 from utils.session_handler import (
     create_thread_id,
     normalize_thread_id,
@@ -107,27 +111,37 @@ if prompt:
                     time.sleep(0.01)
                     yield char
 
-        st.chat_message(
+        # 复用同一个助手消息容器，正常文本和错误提示不会分成两个气泡。
+        assistant_message = st.chat_message(
             "assistant"
-        ).write_stream(
-            capture(
-                response_stream,
-                response_messages,
-            )
         )
 
-        if response_messages:
-            # Agent可能产生多个中间输出，页面只保存最后的完整回答。
-            st.session_state["message"].append(
-                {
-                    "role": "assistant",
-                    "content": response_messages[-1].strip(),
-                }
+        try:
+            assistant_message.write_stream(
+                capture(
+                    response_stream,
+                    response_messages,
+                )
+            )
+        except AgentExecutionError as error:
+            # 页面只展示安全提示；真实异常堆栈已经按问题编号写入日志。
+            assistant_message.error(
+                error.public_message
             )
         else:
-            # 防止异常空流导致访问response_messages[-1]时报错。
-            st.warning(
-                "Agent没有返回可展示的文本，请稍后重试。"
-            )
+            if response_messages:
+                # Agent可能产生多个输出，页面只缓存最后的完整回答。
+                st.session_state["message"].append(
+                    {
+                        "role": "assistant",
+                        "content": response_messages[-1].strip(),
+                    }
+                )
+            else:
+                # 防止异常空流导致访问列表最后一项时报错。
+                assistant_message.warning(
+                    "Agent没有返回可展示的文本，请稍后重试。"
+                )
 
-        st.rerun()
+            # 只有正常完成时才刷新，避免错误提示刚显示就被清除。
+            st.rerun()

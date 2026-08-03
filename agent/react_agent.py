@@ -1,3 +1,8 @@
+# Iterator用于明确标注流式方法会逐步产生字符串。
+from collections.abc import Iterator
+from time import perf_counter
+from uuid import uuid4
+
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -10,12 +15,32 @@ from agent.tools.agent_tools import (
     get_weather,
     rag_summarize,
 )
-from agent.tools.middleware import log_before_model, monitor_tool, report_prompt_switch
+from agent.tools.middleware import (
+    monitor_model,
+    monitor_tool,
+    report_prompt_switch,
+)
 from model.factory import chat_model
 from utils.checkpoint_handler import create_sqlite_checkpointer
 from utils.config_handler import agent_conf
+from utils.logger_handler import logger
 from utils.prompt_loader import load_system_prompts
 
+
+class AgentExecutionError(RuntimeError):
+    """表示Agent请求失败，但只向页面暴露安全且可追踪的信息。"""
+
+    def __init__(self, request_id: str):
+        # 保存问题编号，测试和页面都可以读取。
+        self.request_id = request_id
+
+        # 页面只展示友好说明和问题编号，不暴露底层异常与调用栈。
+        self.public_message = (
+            "请求处理暂时失败，请稍后重试。"
+            f"问题编号：{request_id}"
+        )
+
+        super().__init__(self.public_message)
 
 class ReactAgent:
     """封装带工具、中间件和会话记忆的 LangGraph Agent。"""
@@ -44,7 +69,7 @@ class ReactAgent:
                 ],
                 middleware=[
                     monitor_tool,
-                    log_before_model,
+                    monitor_model,
                     report_prompt_switch,
                 ],
                 checkpointer=self.checkpointer,
@@ -109,27 +134,94 @@ class ReactAgent:
 
         return history
 
-    def execute_stream(self, query: str, thread_id: str):
-        """在指定会话中执行一次提问，并逐步产出 Agent 的文本消息。"""
+    def execute_stream(
+        self,
+        query: str,
+        thread_id: str,
+    ) -> Iterator[str]:
+        """执行一次流式提问，并记录可追踪的请求生命周期。"""
+        # 每次请求生成独立编号，避免使用问题文本作为日志标识。
+        request_id = uuid4().hex[:12]
+        session_id = thread_id[:8]
+        started_at = perf_counter()
+
+        logger.info(
+            "[agent_request]请求开始 "
+            "request_id=%s session_id=%s",
+            request_id,
+            session_id,
+        )
+
         input_dict = {
             "messages": [
-                {"role": "user", "content": query},
+                {
+                    "role": "user",
+                    "content": query,
+                },
             ]
         }
 
-        # 相同 thread_id 会读取之前的消息；更换 ID 即创建隔离的新会话。
-        config = {"configurable": {"thread_id": thread_id}}
+        # 相同thread_id读取历史状态，更换ID则创建隔离会话。
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+            }
+        }
 
-        # report 是单次请求的运行时标记，中间件可将其切换为 True 以启用报告 Prompt。
-        for chunk in self.agent.stream(
-            input_dict,
-            config=config,
-            stream_mode="values",
-            context={"report": False},
-        ):
-            latest_message = chunk["messages"][-1]
-            if latest_message.content:
-                yield latest_message.content.strip() + "\n"
+        # 中间件可以读取请求编号，但日志不记录完整会话ID。
+        runtime_context = {
+            "report": False,
+            "request_id": request_id,
+            "session_id": session_id,
+        }
+
+        try:
+            for chunk in self.agent.stream(
+                input_dict,
+                config=config,
+                stream_mode="values",
+                context=runtime_context,
+            ):
+                latest_message = chunk["messages"][-1]
+
+                if latest_message.content:
+                    yield (
+                        latest_message.content.strip()
+                        + "\n"
+                    )
+        except Exception as error:
+            elapsed_ms = (
+                perf_counter() - started_at
+            ) * 1000
+
+            # exception会把真实异常堆栈写入服务端日志，方便按编号排查。
+            logger.exception(
+                "[agent_request]请求失败 "
+                "request_id=%s session_id=%s "
+                "elapsed_ms=%.2f error_type=%s",
+                request_id,
+                session_id,
+                elapsed_ms,
+                type(error).__name__,
+            )
+
+            # 保留异常因果链供日志排查，页面下一步只展示public_message。
+            raise AgentExecutionError(
+                request_id
+            ) from error
+
+        elapsed_ms = (
+            perf_counter() - started_at
+        ) * 1000
+
+        logger.info(
+            "[agent_request]请求成功 "
+            "request_id=%s session_id=%s "
+            "elapsed_ms=%.2f",
+            request_id,
+            session_id,
+            elapsed_ms,
+        )
 
 
 if __name__ == "__main__":

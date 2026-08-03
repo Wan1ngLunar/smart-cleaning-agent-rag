@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import date
 
 import pytest
@@ -81,11 +82,27 @@ def test_fetch_external_data_returns_json_string():
     }
 
 
-def test_fetch_external_data_returns_empty_string_when_missing():
-    """不存在的月份必须返回空字符串，不能编造或随机改查其他月份。"""
-    result = fetch_external_data.invoke({
-        "user_id": "1001",
-        "month": "2099-01",
-    })
+def test_fetch_external_data_returns_empty_string_when_missing(
+    caplog: pytest.LogCaptureFixture,
+):
+    """未命中时应返回空字符串，且日志不能保存查询参数。"""
+    private_user_id = "private-user-1001"
+    private_month = "2099-01"
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="agent",
+    ):
+        result = fetch_external_data.invoke({
+            "user_id": private_user_id,
+            "month": private_month,
+        })
 
     assert result == ""
+    assert "未检索到匹配的演示使用记录" in (
+        caplog.text
+    )
+
+    # 工具参数可能来自用户输入，不能写入持久化日志。
+    assert private_user_id not in caplog.text
+    assert private_month not in caplog.text
