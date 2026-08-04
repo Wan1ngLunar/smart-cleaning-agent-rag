@@ -1,8 +1,9 @@
 import hashlib
 import os
+from pathlib import Path
 
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
+from pypdf import PdfReader
 
 from utils.logger_handler import logger
 
@@ -52,9 +53,50 @@ def listdir_with_allowed_type(
     return tuple(files)
 
 
-def pdf_loader(filepath: str, passwd=None) -> list[Document]:
-    return PyPDFLoader(filepath, passwd).load()
+def pdf_loader(
+    filepath: str,
+    passwd: str | bytes | None = None,
+) -> list[Document]:
+    """按页读取PDF，并保留来源路径与页码元数据。"""
+    reader = PdfReader(
+        filepath,
+        password=passwd,
+    )
+    documents: list[Document] = []
+
+    # page_labels可保留PDF自身的页码标签；普通PDF通常为1、2、3等。
+    page_labels = reader.page_labels or []
+
+    for page_index, page in enumerate(reader.pages):
+        # LangChain约定page使用从0开始的索引，展示时使用page_label。
+        page_label = (
+            page_labels[page_index]
+            if page_index < len(page_labels)
+            else str(page_index + 1)
+        )
+
+        documents.append(
+            Document(
+                # 扫描件或空白页可能提取不到文字，此时使用空字符串。
+                page_content=page.extract_text() or "",
+                metadata={
+                    "source": filepath,
+                    "page": page_index,
+                    "page_label": page_label,
+                },
+            )
+        )
+
+    return documents
 
 
 def txt_loader(filepath: str) -> list[Document]:
-    return TextLoader(filepath, encoding="utf-8").load()
+    """以UTF-8读取TXT，并转换为一个带来源路径的文档。"""
+    content = Path(filepath).read_text(encoding="utf-8")
+
+    return [
+        Document(
+            page_content=content,
+            metadata={"source": filepath},
+        )
+    ]

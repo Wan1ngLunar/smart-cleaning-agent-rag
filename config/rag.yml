@@ -1,5 +1,15 @@
 chat_model_name: qwen3-max
 embedding_model_name: text-embedding-v4
+
+# DashScope中国内地服务的OpenAI兼容接口地址。
+dashscope_compatible_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# 固定为现有Chroma数据库使用的1024维，防止新旧向量维度不一致。
+embedding_dimensions: 1024
+
+# text-embedding-v4单次请求最多接收10段文本。
+embedding_batch_size: 10
+
 # 低于该分数的片段不发送给模型，用于过滤明显无关的检索结果。
 # 该值只负责第一层粗过滤，不能单独判断知识库是否能够回答问题。
 min_relevance_score: 0.20

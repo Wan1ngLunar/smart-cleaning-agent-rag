@@ -7,11 +7,11 @@ langgraph==1.2.9
 langgraph-checkpoint-sqlite==3.1.0
 
 # 模型集成、向量库和文本处理。
-langchain-community==0.4.2
+# 通过DashScope官方OpenAI兼容接口调用聊天模型和向量模型。
+langchain-openai==1.4.1
 langchain-chroma==1.1.0
 langchain-text-splitters==1.1.2
 chromadb==1.5.9
-dashscope==1.26.4
 
 # 环境变量、YAML 与 PDF 读取。
 python-dotenv==1.2.2

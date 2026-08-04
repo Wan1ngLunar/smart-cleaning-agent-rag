@@ -718,3 +718,55 @@ Agent使用`InMemorySaver`按`thread_id`保存多轮消息，Streamlit进程退�
 ### 相关提交
 
 - 本次改动使用中文提交说明：`功能：增加请求追踪与友好错误处理`
+
+## 2026-08-04：迁移弃用的模型集成与文件加载器
+
+### 原问题
+
+- 项目使用`langchain-community`中的`ChatTongyi`、`DashScopeEmbeddings`、`PyPDFLoader`和`TextLoader`，运行测试时持续出现该包停止维护的弃用警告。
+- 直接删除旧依赖可能改变向量维度或语义结果，使现有Chroma索引无法继续查询。
+- `text-embedding-v4`单次最多接收10段文本，若沿用OpenAI客户端默认的较大批量，重新入库时可能超过DashScope接口限制。
+- 文件加载器迁移后仍需保留RAG引用依赖的来源路径、PDF内部页索引和展示页码。
+
+### 修改内容
+
+1. 在虚拟环境中安装并在`requirements.txt`固定`langchain-openai==1.4.1`。
+2. 使用同一段中文分别调用旧、新向量客户端，确认两者均返回1024维向量，余弦相似度为1.00000000且数值全部有效。
+3. 使用强制工具调用验证`ChatOpenAI`能够通过DashScope兼容接口返回LangChain可识别的工具名称和参数。
+4. 在`config/rag.yml`集中配置DashScope中国内地OpenAI兼容地址、1024维向量和10条批量上限。
+5. 将模型工厂从`ChatTongyi`和`DashScopeEmbeddings`迁移为`ChatOpenAI`和`OpenAIEmbeddings`。
+6. 为向量客户端显式设置1024维、10条批量大小，并关闭OpenAI专用的本地上下文切分；项目继续使用既有文本切分器控制知识片段。
+7. 使用Python标准库`Path.read_text(encoding="utf-8")`替代`TextLoader`，将每个TXT文件转换为一个带`source`元数据的`Document`。
+8. 使用`pypdf.PdfReader`替代`PyPDFLoader`，按页生成`Document`并保留`source`、从0开始的`page`及用于展示的`page_label`。
+9. 增加TXT和PDF加载器单元测试，覆盖可读中文、来源路径、空白页正文、PDF分页和页码元数据。
+10. 确认源码不再导入旧包后，从运行依赖和虚拟环境中删除`langchain-community`与旧`dashscope` SDK。
+11. 重新构建Docker镜像，确认容器内同样不包含旧包，并使用新的聊天与向量客户端正常完成真实RAG回答。
+12. 更新README中的技术栈、质量基线、关键设计、当前限制和后续计划。
+
+### 修改意义
+
+- 消除停止维护依赖带来的弃用警告和后续兼容风险，同时继续使用阿里云DashScope模型服务。
+- 使用官方OpenAI兼容协议降低模型客户端与单一厂商SDK实现的耦合。
+- 显式固定接口地址、向量维度和批量上限，使配置可审查，并避免请求误发、索引维度冲突和批量超限。
+- 新旧向量结果完全一致，现有Chroma数据库无需重建，历史检索基线可以继续使用。
+- 本地TXT/PDF加载逻辑更轻量、直接，并继续支持回答中的文件名和PDF页码引用。
+- 本地虚拟环境、全新依赖安装和Docker镜像使用同一份直接依赖清单，减少环境差异。
+
+### 验证结果
+
+- `pip check`输出`No broken requirements found.`，卸载旧包后未出现依赖缺失或版本冲突。
+- 新旧`text-embedding-v4`向量维度均为1024，余弦相似度为1.00000000，所有向量值均为有限数。
+- 新聊天客户端返回1次`get_demo_city`工具调用，工具参数为无参数函数对应的空对象。
+- 模型工厂成功创建`ChatOpenAI`和`OpenAIEmbeddings`，真实向量请求返回1024维结果。
+- 新TXT加载器读取中文内容并保留来源，新PDF加载器按页返回文档并保留正确页码。
+- Ruff全项目检查输出`All checks passed!`。
+- 完整自动化测试输出`41 passed`，不再出现`langchain-community`弃用警告。
+- 核心模块测试覆盖率为77.57%，达到持续集成要求的60%门禁。
+- 真实检索评估保持Hit@1 100%、Hit@3 100%、MRR 1.0000。
+- 真实模型可回答性冒烟评估为3/3通过，全量14条评估为14/14通过。
+- Docker Compose重新构建后容器状态为`healthy`，容器内`pip check`通过，旧包不存在，新模型和文件加载器导入正常。
+- 容器页面能够正常生成带参考来源的中文RAG回答，最近日志中没有旧依赖弃用警告。
+
+### 相关提交
+
+- 建议使用中文提交说明：`重构：迁移模型集成并移除弃用依赖`

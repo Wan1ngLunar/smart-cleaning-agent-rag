@@ -3,12 +3,9 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from dotenv import load_dotenv
-from langchain_community.chat_models.tongyi import (
-    BaseChatModel,
-    ChatTongyi,
-)
-from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.embeddings import Embeddings
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from utils.config_handler import rag_conf
 from utils.path_tool import get_abs_path
@@ -47,17 +44,27 @@ class BaseModelFactory(ABC):
 
 class ChatModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
-        return ChatTongyi(
+        """创建通过DashScope OpenAI兼容接口工作的聊天模型。"""
+        return ChatOpenAI(
             model=rag_conf["chat_model_name"],
             api_key=DASHSCOPE_API_KEY,
+            base_url=rag_conf["dashscope_compatible_base_url"],
         )
 
 
 class EmbeddingsFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
-        return DashScopeEmbeddings(
+        """创建与现有Chroma数据兼容的向量模型。"""
+        return OpenAIEmbeddings(
             model=rag_conf["embedding_model_name"],
-            dashscope_api_key=DASHSCOPE_API_KEY,
+            api_key=DASHSCOPE_API_KEY,
+            base_url=rag_conf["dashscope_compatible_base_url"],
+            # 显式固定维度，防止已有Chroma集合出现维度不匹配。
+            dimensions=rag_conf["embedding_dimensions"],
+            # 遵守text-embedding-v4每次最多处理10段文本的限制。
+            chunk_size=rag_conf["embedding_batch_size"],
+            # 项目已在入库前切分文本，因此无需使用OpenAI分词器再次拆分。
+            check_embedding_ctx_length=False,
         )
 
 
