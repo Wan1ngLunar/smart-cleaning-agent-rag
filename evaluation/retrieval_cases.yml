@@ -38,6 +38,208 @@ cases:
     expected_sources:
       - "扫地机器人100问.pdf"
 
+  # 第一批扩充正例：每份知识文件增加两个不同主题的问题。
+  # 问题使用自然改写，不直接复制资料原句，避免评估变成关键词背诵。
+  - id: bedroom_noise_limit
+    kind: positive
+    query: "卧室使用的扫地机器人，工作噪音最好控制在多少分贝以内？"
+    expected_sources:
+      - "选购指南.txt"
+
+  - id: allergy_filter_level
+    kind: positive
+    query: "家里有人容易过敏，选购时HEPA滤网至少应该达到什么等级？"
+    expected_sources:
+      - "选购指南.txt"
+
+  - id: operating_temperature_maintenance
+    kind: positive
+    query: "扫地机器人应该避免在哪些高温或低温环境中长时间工作？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: charging_base_infrared_cleaning
+    kind: positive
+    query: "充电座的红外感应区应该多久清理一次，具体怎样清理？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: cleaning_solution_ratio
+    kind: positive
+    query: "往扫拖机器人水箱添加专用清洁液时，建议按什么比例兑水？"
+    expected_sources:
+      - "扫拖一体机器人100问.txt"
+
+  - id: floor_water_level
+    kind: positive
+    query: "木地板和瓷砖拖地时，出水量档位分别应该怎样设置？"
+    expected_sources:
+      # 两份资料都直接包含不同地面对应的出水量建议。
+      - "扫拖一体机器人100问.txt"
+      - "维护保养.txt"
+
+  - id: partition_selection_failure
+    kind: positive
+    query: "地图已经建立，但APP里无法选择分区清扫区域，应该怎样排查？"
+    expected_sources:
+      # 两份故障资料都包含地图、APP和分区设置排查步骤。
+      - "故障排除.txt"
+      - "扫地机器人100问2.txt"
+
+  - id: overheating_with_smell
+    kind: positive
+    query: "扫地机器人严重发热并伴有异味时，应立即做什么并检查哪些部件？"
+    expected_sources:
+      - "故障排除.txt"
+
+  - id: low_battery_immediate_recharge
+    kind: positive
+    query: "机器人开机后直接返回充电座，电量低于多少时属于正常优先回充？"
+    expected_sources:
+      # 修正知识数据后，两份资料都能够回答20%的回充阈值。
+      - "扫地机器人100问2.txt"
+      - "选购指南.txt"
+
+  - id: carpet_dust_boost
+    kind: positive
+    query: "地毯上的灰尘清理不彻底，应开启什么功能并怎样调整吸力？"
+    expected_sources:
+      # 以下资料均明确提到地毯增压或地毯深度清扫。
+      - "扫地机器人100问2.txt"
+      - "扫地机器人100问.pdf"
+      - "选购指南.txt"
+      - "维护保养.txt"
+
+  - id: structured_light_principle
+    kind: positive
+    query: "3D结构光避障是怎样测量障碍物距离和形状的？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
+  - id: long_charge_battery_protection
+    kind: positive
+    query: "扫地机器人长时间放在充电座上会损坏电池吗，现代锂电池有什么保护？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
+  # 第二批扩充正例：覆盖选购参数、维护周期、拖地功能、故障和技术原理。
+  - id: complex_layout_navigation_choice
+    kind: positive
+    query: "家里户型复杂并且有强光区域，激光导航和视觉导航应该怎样选择？"
+    expected_sources:
+      # 两份资料都包含激光与视觉导航的适用场景。
+      - "选购指南.txt"
+      - "扫地机器人100问.pdf"
+
+  - id: warranty_policy_selection
+    kind: positive
+    query: "选购扫地机器人时，整机和电机、电池等核心部件的保修期建议达到多久？"
+    expected_sources:
+      - "选购指南.txt"
+
+  - id: pet_waste_body_cleaning
+    kind: positive
+    query: "扫地机器人不慎沾到宠物粪便后，应该使用什么方式和清洁剂处理？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: monthly_battery_compartment_check
+    kind: positive
+    query: "每月检查扫地机器人的电池仓时，需要注意电池和排线的哪些异常？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: water_tank_leak_handling
+    kind: positive
+    query: "扫拖机器人水箱加水后漏水，应检查水箱盖、密封圈和出水管的哪些问题？"
+    expected_sources:
+      # 使用说明和故障资料都包含水箱漏水排查。
+      - "扫拖一体机器人100问.txt"
+      - "故障排除.txt"
+
+  - id: mop_automatic_lifting
+    kind: positive
+    query: "支持拖布抬升的机器人会在回充、经过地毯或完成清扫时怎样处理拖布？"
+    expected_sources:
+      - "扫拖一体机器人100问.txt"
+
+  - id: frequent_furniture_collision
+    kind: positive
+    query: "扫地机器人频繁碰撞家具时，应怎样检查避障传感器和防撞条？"
+    expected_sources:
+      - "故障排除.txt"
+
+  - id: charging_light_flashing
+    kind: positive
+    query: "机器人充电时指示灯闪烁且无法正常充电，应检查哪些触点、适配器和电池问题？"
+    expected_sources:
+      - "故障排除.txt"
+
+  - id: incomplete_map_reflection
+    kind: positive
+    query: "建图不完整或地图错乱时，镜面等反光物和移动障碍物应该怎样处理？"
+    expected_sources:
+      # 两份资料都要求处理反光物、清理障碍并重新建图。
+      - "扫地机器人100问2.txt"
+      - "故障排除.txt"
+
+  - id: no_automatic_recharge_after_cleaning
+    kind: positive
+    query: "清扫结束后机器人不自动回充，应检查APP设置、充电座位置和回充传感器吗？"
+    expected_sources:
+      # 使用问答和故障资料都包含自动回充排查。
+      - "扫地机器人100问2.txt"
+      - "故障排除.txt"
+
+  - id: pascal_suction_examples
+    kind: positive
+    query: "扫地机器人吸力参数中的Pa表示什么，2000Pa和2500Pa大致能清理哪些物品？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
+  - id: pet_waste_visual_recognition
+    kind: positive
+    query: "有些扫地机器人为什么能够识别并避开宠物粪便，主要依靠什么识别能力？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
+  # 第三批扩充正例：为每份知识文件再补充一个独立主题。
+  - id: threshold_crossing_selection
+    kind: positive
+    query: "家中门槛高度不超过2厘米，选购机器人时越障能力至少应该达到多少？"
+    expected_sources:
+      - "选购指南.txt"
+
+  - id: hepa_filter_maintenance_cycle
+    kind: positive
+    query: "HEPA滤网应该多久清理、多久水洗一次，并在使用多长时间后更换？"
+    expected_sources:
+      - "维护保养.txt"
+
+  - id: empty_water_tank_behavior
+    kind: positive
+    query: "扫拖机器人水箱缺水后会自动停止吗，扫地功能是否还能继续？"
+    expected_sources:
+      - "扫拖一体机器人100问.txt"
+
+  - id: forbidden_zone_still_entered
+    kind: positive
+    query: "设置禁区后机器人仍然进入，应检查禁区边界、地图识别和哪些临时设置？"
+    expected_sources:
+      - "故障排除.txt"
+
+  - id: remote_control_no_response
+    kind: positive
+    query: "在手机APP中手动遥控机器人没有反应，应检查连接状态和清扫模式吗？"
+    expected_sources:
+      - "扫地机器人100问2.txt"
+
+  - id: spare_battery_necessity
+    kind: positive
+    query: "扫地机器人通常有必要购买备用电池吗，原装电池一般可以使用几年？"
+    expected_sources:
+      - "扫地机器人100问.pdf"
+
   # 负例不设置预期来源，用于观察无关问题仍被Chroma返回时的最高分。
   - id: unrelated_cooking
     kind: negative
@@ -78,4 +280,92 @@ cases:
   - id: robot_python_control
     kind: negative
     query: "请用Python编写一套扫地机器人的路径规划控制程序。"
+    expected_sources: []
+
+  # 实时与外部数据负例：问题与扫地机器人有关，
+  # 但答案需要访问实时商城、厂商或位置服务。
+  - id: latest_firmware_version
+    kind: negative
+    query: "扫地机器人今天最新的官方固件版本号是什么，应该从哪里下载？"
+    expected_sources: [ ]
+
+  - id: live_accessory_price
+    kind: negative
+    query: "原装HEPA滤网和边刷现在的官方售价分别是多少？"
+    expected_sources: [ ]
+
+  - id: nearby_service_center
+    kind: negative
+    query: "离我当前位置最近的扫地机器人官方维修网点地址和电话是什么？"
+    expected_sources: [ ]
+
+  - id: current_store_inventory
+    kind: negative
+    query: "附近哪家门店今天还有石头P20 Pro扫地机器人的现货？"
+    expected_sources: [ ]
+
+  # 相邻清洁设备负例：包含清洁、滤网、电机等相似词，
+  # 但设备对象不属于当前扫地机器人知识库。
+  - id: window_robot_fall_repair
+    kind: negative
+    query: "擦窗机器人吸附玻璃后频繁掉落，应该检查哪个真空部件？"
+    expected_sources: [ ]
+
+  - id: lawn_robot_blade_repair
+    kind: negative
+    query: "割草机器人的刀盘电机不旋转，应该怎样拆卸和维修？"
+    expected_sources: [ ]
+
+  - id: pool_robot_filter_cleaning
+    kind: negative
+    query: "泳池清洁机器人的过滤篮应该使用什么药剂浸泡清洗？"
+    expected_sources: [ ]
+
+  - id: floor_scrubber_sewage_failure
+    kind: negative
+    query: "手持洗地机无法回收污水，应该检查吸污管还是污水泵？"
+    expected_sources: [ ]
+
+  # 高风险深度维修负例：知识库只有用户级排障，
+  # 不支持电芯、主板、高压电路等拆机维修指导。
+  - id: lithium_battery_cell_replacement
+    kind: negative
+    query: "如何拆开扫地机器人锂电池包并更换其中损坏的单节电芯？"
+    expected_sources: [ ]
+
+  - id: motherboard_voltage_diagnosis
+    kind: negative
+    query: "扫地机器人主板不开机时，应该用万用表测量哪些测试点和电压？"
+    expected_sources: [ ]
+
+  - id: lidar_module_calibration
+    kind: negative
+    query: "拆开LDS激光雷达后，怎样校准电机转速和激光发射角度？"
+    expected_sources: [ ]
+
+  - id: charging_dock_mains_repair
+    kind: negative
+    query: "扫地机器人充电座的220V电源板烧坏后，应该更换哪些元器件？"
+    expected_sources: [ ]
+
+  # 软件、法律和医疗边界负例：知识库不包含程序接口、
+  # 固件逆向、法律结论或医疗效果保证。
+  - id: home_assistant_mqtt_integration
+    kind: negative
+    query: "请编写Home Assistant通过MQTT控制扫地机器人的完整集成代码。"
+    expected_sources: [ ]
+
+  - id: firmware_reverse_engineering
+    kind: negative
+    query: "怎样逆向扫地机器人的固件并绕过厂商签名校验？"
+    expected_sources: [ ]
+
+  - id: consumer_warranty_law
+    kind: negative
+    query: "按照中国消费者法律，扫地机器人维修三次仍故障可以要求多少赔偿？"
+    expected_sources: [ ]
+
+  - id: medical_allergy_medication
+    kind: negative
+    query: "我的尘螨特异性IgE检测结果很高，应该服用哪种抗过敏药以及每天多少剂量？"
     expected_sources: []

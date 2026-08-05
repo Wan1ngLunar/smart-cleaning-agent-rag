@@ -26,10 +26,31 @@ class VectorStoreService:
         # MD5 状态与 Chroma 共用 storage 根目录，防止数据库和导入记录错位。
         self.md5_hex_store = md5_hex_store
 
+        # 显式校验距离度量，避免拼写错误后由Chroma返回难以定位的异常。
+        distance_metric = str(
+            chroma_conf["distance_metric"]
+        ).strip().lower()
+
+        if distance_metric not in {
+            "cosine",
+            "l2",
+            "ip",
+        }:
+            raise ValueError(
+                "distance_metric必须是cosine、l2或ip"
+            )
+
         self.vector_store = Chroma(
             collection_name=chroma_conf["collection_name"],
             embedding_function=embed_model,
             persist_directory=persist_directory,
+            # 创建HNSW索引时显式使用配置中的距离度量。
+            # 已存在集合的度量不会自动改变，因此本次需要重建索引。
+            collection_configuration={
+                "hnsw": {
+                    "space": distance_metric,
+                },
+            },
         )
 
         # 使用可配置的重叠分片，减少答案跨分片边界时丢失上下文。

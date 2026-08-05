@@ -45,8 +45,8 @@ def make_result(
     )
 
 
-def test_retrieval_cases_file_contains_current_baseline():
-    """YAML应至少保留当前建立的正例、负例和冒烟用例。"""
+def test_retrieval_cases_file_contains_resume_scale_baseline():
+    """评测集应保持至少60条，并覆盖关键知识边界类型。"""
     cases = load_cases()
     positive_count = sum(
         case.kind == "positive"
@@ -61,11 +61,24 @@ def test_retrieval_cases_file_contains_current_baseline():
         for case in cases
     }
 
-    # 使用大于等于，允许未来继续增加评估用例。
-    assert len(cases) >= 14
-    assert positive_count >= 6
-    assert negative_count >= 8
+    # 使用最低数量而不是严格等于，允许以后继续扩充评测集。
+    assert len(cases) >= 60
+    assert positive_count >= 36
+    assert negative_count >= 24
+
+    # 冒烟用例必须保留，避免默认真实模型评估失去代表性。
     assert set(SMOKE_CASE_IDS).issubset(case_ids)
+
+    # 每类重要边界至少保留一个代表用例。
+    required_boundary_case_ids = {
+        "realtime_product_price",
+        "handheld_vacuum_repair",
+        "motherboard_voltage_diagnosis",
+        "medical_allergy_medication",
+    }
+    assert required_boundary_case_ids.issubset(
+        case_ids
+    )
 
 
 def test_calculate_summary_reports_score_overlap():

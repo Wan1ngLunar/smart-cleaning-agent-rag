@@ -1,4 +1,8 @@
 collection_name: agent
+
+# 文本向量检索关注语义方向，显式使用余弦距离，避免依赖Chroma默认L2。
+distance_metric: cosine
+
 # 数据库和导入状态统一放在被 Git 忽略的 storage 目录。
 persist_directory: storage/chroma
 k: 3

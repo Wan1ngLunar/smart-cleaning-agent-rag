@@ -31,3 +31,7 @@ def test_demo_configuration_is_deterministic():
     assert str(agent_conf["demo"]["user_id"]) == "1001"
     assert agent_conf["demo"]["user_location"] == "深圳"
     assert agent_conf["demo"]["weather"]["condition"] == "晴天"
+
+def test_chroma_distance_metric_is_cosine():
+    """文本向量库应显式使用余弦距离，不能退回默认L2。"""
+    assert chroma_conf["distance_metric"] == "cosine"
