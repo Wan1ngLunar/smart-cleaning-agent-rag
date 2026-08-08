@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Wan1ngLunar/smart-cleaning-agent-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Wan1ngLunar/smart-cleaning-agent-rag/actions/workflows/ci.yml)
 
-智扫通是一个面向扫地机器人的智能客服项目，基于 LangChain、LangGraph、Chroma 和 Streamlit 构建。系统能够调用知识库检索、演示天气、用户信息和设备使用记录等工具，并支持多轮对话与个性化使用报告生成。
+智扫通是一个面向扫地机器人的智能客服项目，基于 FastAPI、Streamlit、LangChain、LangGraph 和 Chroma 构建。系统能够调用知识库检索、演示天气、用户信息和设备使用记录等工具，并支持多轮对话与个性化使用报告生成。
 
 > 本项目用于技术学习和功能演示。用户身份、地理位置、天气及设备记录均为本地演示数据，不代表真实业务系统或实时接口。
 
@@ -12,10 +12,11 @@
 - **混合拒答机制**：先过滤明显低分片段，再由 System 级知识边界判断资料是否真正足以回答，避免把相似知识迁移到错误设备或时效场景。
 - **可量化检索评估**：使用36条正例和24条困难负例计算 Hit@1、Hit@3、MRR 和分数重叠，并提供真实模型冒烟与60条全量验收脚本。
 - **Agent 工具调用**：根据问题自动选择知识检索、天气、用户信息和使用记录工具。
+- **前后端解耦**：Streamlit通过HTTPX调用FastAPI，不直接导入Agent、模型、向量库或SQLite；后端提供聊天、历史和健康检查接口。
 - **持久化多轮记忆**：使用 LangGraph SQLite Checkpointer 保存会话状态，以 URL 中的 UUID 隔离会话并支持应用重启恢复。
 - **个性化报告生成**：根据本地 CSV 中的设备使用记录生成月度报告和保养建议。
 - **确定性演示数据**：固定演示用户和城市，避免随机数据导致结果不可复现。
-- **容器化交付**：使用非 root Docker 镜像和 Docker Compose 一键启动，提供健康检查、运行时密钥注入及数据库与日志持久化挂载。
+- **容器化交付**：使用同一非root镜像运行独立的FastAPI与Streamlit容器，提供服务依赖、双健康检查、后端密钥注入及数据库与日志持久化挂载。
 - **请求级可观测性**：使用问题编号关联Agent、模型和工具调用，记录成功、失败及耗时，同时避免日志保存用户问题、工具参数和完整会话标识。
 - **友好错误处理**：服务端保留带问题编号的异常堆栈，Streamlit页面只展示安全提示，不向用户暴露SDK、文件路径和内部调用栈。
 - **工程化保障**：提供环境变量管理、自动化测试、覆盖率统计和 Ruff 静态检查。
@@ -24,7 +25,8 @@
 
 | 分类 | 技术 |
 | --- | --- |
-| Web 界面 | Streamlit |
+| Web 前端 | Streamlit、HTTPX |
+| 后端 API | FastAPI、Uvicorn |
 | Agent 编排 | LangChain、LangGraph |
 | 大语言模型 | 通义千问、langchain-openai、DashScope OpenAI 兼容接口 |
 | Embedding 模型 | text-embedding-v4（1024维） |
@@ -39,7 +41,8 @@
 ```mermaid
 flowchart TD
     U["用户"] --> UI["Streamlit 聊天界面"]
-    UI --> A["ReactAgent / LangGraph"]
+    UI -->|"HTTP JSON"| API["FastAPI 后端"]
+    API --> A["ReactAgent / LangGraph"]
     A <--> M["通义千问聊天模型"]
     A --> C["SQLite Checkpointer 持久化会话"]
     A --> MW["请求追踪、模型与工具监控、动态 Prompt 中间件"]
@@ -60,31 +63,33 @@ flowchart TD
 
 ## 请求处理流程
 
-1. Streamlit 校验 URL 中的 UUID `thread_id`；参数缺失或非法时创建新会话并写回地址栏。
-2. LangGraph 根据 `thread_id` 从 SQLite 恢复模型状态，页面同时过滤内部工具消息并重建可展示的聊天历史。
-3. 每次提问生成12位问题编号；Agent、模型和工具日志使用同一编号记录调用结果与毫秒耗时，不记录问题正文、工具参数或完整会话ID。
-4. Agent 将用户问题交给模型，由模型判断是否需要调用工具。
-5. 知识问答场景会检索 Chroma 中的本地文档，并在生成前过滤低于最低相关性分数的片段。
-6. 通过低分过滤后，System 消息会约束模型核对问题对象、范围和时效；资料不足时返回统一拒答，资料充分时生成带编号引用的回答，再由服务层追加去重后的文件名和 PDF 页码。
-7. 报告场景会读取本地 CSV 演示记录，并通过中间件切换到报告专用 Prompt。
-8. Agent的最终结果以流式方式返回Streamlit；执行失败时服务端日志保留异常因果链，页面只展示可用于排查的问题编号。
+1. Streamlit校验URL中的UUID `thread_id`；参数缺失或非法时创建新会话并写回地址栏。
+2. 前端使用HTTPX调用FastAPI历史接口；后端校验UUID4后，通过共享ReactAgent从SQLite读取状态，并只返回用户消息和最终助手文本。
+3. FastAPI在应用启动时创建一次ReactAgent并保存到应用状态，关闭时通过生命周期钩子释放SQLite连接。
+4. 聊天接口校验会话ID、非空问题和4000字符上限，再把请求交给Agent；每次执行生成12位问题编号并记录模型、工具与整体耗时。
+5. Agent将用户问题交给模型，由模型判断是否需要调用工具；知识问答场景检索Chroma并过滤低于最低相关性分数的片段。
+6. 通过低分过滤后，System消息约束模型核对问题对象、范围和时效；资料不足时统一拒答，资料充分时生成带编号引用的回答并追加文件名和PDF页码。
+7. 报告场景读取本地CSV演示记录，并通过中间件切换到报告专用Prompt。
+8. FastAPI将最终有效回答包装为JSON；Streamlit只负责展示和本地打字效果。Agent失败时API返回502、安全说明和问题编号，不暴露内部调用栈。
 
 ## 项目结构
 
 ```text
 .
 ├─ agent/                 # Agent 编排、工具和中间件
+├─ backend/               # FastAPI应用、数据契约、依赖与版本化路由
 ├─ config/                # Agent、RAG、Chroma 等非敏感配置
 ├─ data/                  # 本地知识文档和演示使用记录
 ├─ evaluation/            # 检索用例、离线指标和真实模型可回答性评估
+├─ frontend/              # Streamlit使用的HTTP客户端和后端地址配置
 ├─ model/                 # 聊天模型与 Embedding 模型工厂
 ├─ prompts/               # 普通问答、RAG 总结和报告 Prompt
 ├─ rag/                   # 文档切分、向量入库和检索服务
 ├─ tests/                 # 自动化测试与文本编码守卫
 ├─ utils/                 # 配置、文件、日志、路径和 Prompt 工具
-├─ app.py                 # Streamlit 应用入口
-├─ Dockerfile             # 非 root 用户、健康检查和Streamlit启动配置
-├─ compose.yml            # 端口、密钥和持久化目录编排
+├─ app.py                 # 只通过HTTP访问后端的Streamlit入口
+├─ Dockerfile             # FastAPI与Streamlit共用的非root运行镜像
+├─ compose.yml            # api/web双服务、健康检查和安全边界编排
 ├─ .dockerignore          # 排除密钥、虚拟环境和本地运行数据
 ├─ requirements.txt       # 固定版本的运行依赖
 ├─ requirements-dev.txt   # 测试与静态检查依赖
@@ -138,12 +143,21 @@ python -m rag.vector_store
 
 ### 4. 启动应用
 
+在第一个终端启动FastAPI：
+
 ```powershell
-# 从项目根目录启动 Streamlit 聊天页面。
+# 启动后端API、Agent和SQLite资源。
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+在第二个终端启动Streamlit：
+
+```powershell
+# 前端通过API_BASE_URL访问FastAPI，不直接创建Agent。
 python -m streamlit run app.py
 ```
 
-启动后访问终端显示的本地地址。页面会把合法的 `thread_id` 写入 URL；使用同一完整 URL 可以在应用重启后恢复模型状态和页面聊天历史。点击侧边栏的“新建对话”会生成新 UUID、清空页面消息并切换到隔离会话。
+FastAPI文档位于`http://127.0.0.1:8000/docs`，聊天页面位于`http://localhost:8501`。页面会把合法的`thread_id`写入URL；使用同一完整URL可以通过后端恢复模型状态和页面聊天历史。点击侧边栏的“新建对话”会生成新UUID、清空页面消息并切换到隔离会话。
 
 URL 中的 UUID 相当于本地会话访问标识。当前演示没有登录和权限校验，不应公开分享包含真实对话的完整 URL。
 
@@ -155,24 +169,24 @@ URL 中的 UUID 相当于本地会话访问标识。当前演示没有登录和�
 # 构建镜像并在后台启动应用。
 docker compose up --build --detach
 
-# 首次运行或知识文档发生变化时，将data中的文档导入宿主机挂载的Chroma目录。
-docker compose run --rm app python -m rag.vector_store
+# 首次运行或知识文档发生变化时，通过api服务导入宿主机挂载的Chroma目录。
+docker compose run --rm api python -m rag.vector_store
 
 # 查看容器是否进入healthy状态。
 docker compose ps
 
-# 查看最近的应用日志，不输出本地.env文件内容。
-docker compose logs --tail 100 app
+# 查看前后端最近日志，不输出本地.env文件内容。
+docker compose logs --tail 100 api web
 ```
 
-启动后访问`http://localhost:8501`。`storage/`和`logs/`分别挂载到容器内的`/app/storage`和`/app/logs`，因此重建或重启容器不会删除向量库、SQLite会话和宿主机日志。
+启动后访问`http://localhost:8501`，FastAPI文档位于`http://localhost:8000/docs`。只有`api`容器读取`.env`中的模型密钥并挂载`storage/`和`logs/`；`web`容器只获得内部地址`http://api:8000`，不持有模型密钥、Chroma、SQLite或日志目录。重建容器不会删除宿主机上的向量库、会话和日志。
 
 ```powershell
 # 停止并删除Compose容器和项目网络；宿主机挂载的数据与本地镜像会保留。
 docker compose down
 ```
 
-镜像使用普通用户`appuser`运行，并通过Streamlit内置健康接口检查服务。Docker Desktop的镜像下载代理与容器访问模型API的网络路径可能不同；代理应在Docker Desktop或本机网络工具中按环境配置，不应把代理地址、端口或凭据固化到Dockerfile、Compose文件或代码仓库。
+两个容器均使用普通用户`appuser`运行。Compose先等待FastAPI的`/health`通过，再启动Streamlit，并分别检查后端和页面健康状态。Docker Desktop的镜像下载代理与容器访问模型API的网络路径可能不同；代理应在Docker Desktop或本机网络工具中按环境配置，不应把代理地址、端口或凭据固化到Dockerfile、Compose文件或代码仓库。
 
 ### DashScope 连接被重置
 
@@ -196,7 +210,7 @@ docker compose down
 
 ```powershell
 # 在Compose日志中查找指定问题编号关联的Agent、模型和工具记录。
-docker compose logs app |
+docker compose logs api |
   Select-String "request_id=a1b2c3d4e5f6"
 ```
 
@@ -220,11 +234,11 @@ python -m ruff check .
 # 运行全部自动化测试。
 python -m pytest -q
 
-# 运行核心模块覆盖率并执行与CI相同的60%门禁。
-python -m pytest --cov=agent --cov=model --cov=rag --cov=utils --cov-report=term-missing --cov-fail-under=60 -q
+# 按pyproject.toml统计Agent、后端和前端客户端，并执行与CI相同的60%门禁。
+python -m pytest --cov --cov-report=term-missing --cov-fail-under=60 -q
 ```
 
-当前基线为43项测试通过，核心模块测试覆盖率为77.51%。测试覆盖来源去重、PDF页码、本地UTF-8文本与PDF加载、混合拒答、60条评测集守卫、检索指标、余弦距离配置、SQLite表与安全序列化、跨Agent实例恢复、会话隔离、历史消息过滤、UUID校验、请求编号、模型与工具耗时日志、异常包装和日志参数脱敏。模型和文件加载代码已移除`langchain-community`及旧`dashscope` SDK，测试不再产生对应的弃用警告。
+当前基线为76项测试通过，Agent、FastAPI后端、HTTP前端客户端及核心模块总覆盖率为81.15%。测试覆盖API数据契约、生命周期、健康检查、聊天与历史路由、安全错误、HTTP连接异常、前后端导入边界、容器服务与密钥隔离，以及原有的RAG、SQLite会话、请求追踪和60条评测集守卫。开发测试使用`httpx2`适配当前Starlette TestClient，生产前端继续使用固定版本`httpx`，完整测试不产生对应的弃用警告。
 
 ## RAG 评估
 
@@ -279,8 +293,9 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - **路径稳定性**：Chroma 和 MD5 路径先转换为项目绝对路径，避免从不同目录启动时生成多份数据库。
 - **幂等导入**：文档写入 Chroma 成功后才保存 MD5，失败任务可以在下次启动时重试。
 - **持久化会话**：模型状态按`thread_id`写入SQLite；URL保留UUID，应用重启后可重新定位并恢复同一会话。
-- **状态一致性**：页面历史由SQLite中的LangGraph状态重建，只展示用户消息和最终AI文本；新建对话同步更新URL、模型会话键和页面消息。
-- **连接生命周期**：每个浏览器会话复用独立Agent和SQLite连接，资源释放时幂等关闭；WAL和等待超时改善本地并发访问。
+- **API边界**：Streamlit只依赖HTTP客户端；FastAPI使用UUID4、Pydantic严格字段和响应模型约束输入输出，版本化路由为后续演进保留空间。
+- **状态一致性**：页面历史通过FastAPI从LangGraph状态重建，只展示用户消息和最终AI文本；新建对话同步更新URL、后端会话键和页面消息。
+- **连接生命周期**：后端进程复用一个ReactAgent和SQLite连接，并在FastAPI生命周期结束时关闭；每个浏览器会话复用独立HTTPX连接池。
 - **安全反序列化**：Checkpoint只允许LangGraph内置安全类型白名单，白名单外对象不会被重新实例化。
 - **数据一致性**：CSV 按表头读取并校验必要列、空记录和重复用户月份，再一次性发布到进程缓存。
 - **来源可追溯**：模型上下文使用稳定编号，服务层根据文档元数据追加文件名和 PDF 页码，不依赖模型自行生成来源。
@@ -291,8 +306,9 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - **安全配置**：模型密钥从环境变量加载；系统环境变量优先于本地 `.env`，缺失时快速失败并给出修复提示。
 - **模型集成兼容**：聊天与向量模型通过DashScope官方OpenAI兼容接口接入；向量维度固定为1024，批量大小限制为10，与现有Chroma索引及`text-embedding-v4`接口约束保持一致。
 - **轻量文件加载**：TXT由Python标准库按UTF-8读取，PDF由`pypdf`按页解析，并保留来源路径、内部页索引和展示页码，不再依赖Community加载器。
-- **容器安全**：构建上下文排除密钥与本地产物，镜像以无登录权限的普通用户运行；密钥只在容器启动时注入，健康检查不调用模型API。
-- **容器持久化**：Compose将Chroma、SQLite和日志映射到宿主机目录，容器重建后仍可恢复知识索引与历史会话。
+- **容器安全**：构建上下文排除密钥与本地产物，api/web均以无登录权限的普通用户运行；只有api注入模型密钥，健康检查不调用模型API。
+- **容器持久化**：只有api挂载Chroma、SQLite和日志目录；web无权直接访问运行数据，容器重建后仍可恢复知识索引与历史会话。
+- **安全错误传递**：FastAPI将Agent异常转换为带问题编号的502 JSON；HTTP客户端不把未知响应正文、连接栈或内部HTML错误页展示给用户。
 - **请求关联**：每次提问生成独立问题编号，Agent、模型和工具日志共享该编号，并分别记录调用结果和耗时。
 - **日志最小化**：日志只保存排障所需的编号、阶段、数量、异常类型和耗时，不主动记录问题正文、工具参数、完整会话ID或密钥。
 - **错误边界**：Agent边界记录真实异常并转换为安全错误；页面只显示问题编号，避免将SDK调用栈、内部路径和网络细节暴露给用户。
@@ -309,6 +325,7 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - 当前检索指标按预期来源文件统计，可能出现“文件名正确但片段不含答案”的来源级命中；`low_battery_immediate_recharge`已由端到端评估识别为Top-10证据漏召回，后续需要补充片段级证据指标。
 - 当前容器配置面向本地单机演示，尚未提供用户登录、权限隔离、限流、监控告警、TLS入口和多实例生产编排。
 - 当前可观测性基于本地文本日志和问题编号，尚未接入集中式日志、指标系统、分布式追踪和自动告警。
+- 当前聊天接口返回完整JSON回答，Streamlit的逐字效果属于前端展示；尚未实现SSE或NDJSON形式的HTTP增量流式传输。
 
 ## 后续计划
 
@@ -317,7 +334,7 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 - 将评测集继续扩充到100条左右，引入真实问法，并增加片段级证据命中、引用准确率、工具路由成功率、P95响应时间和单次请求成本指标。
 - 针对固定漏召回用例评估BM25混合检索、查询改写和重排序，通过同一评测集进行前后对比。
 - 评估结构化可回答性分类，进一步降低对生成模型边界判断的依赖。
-- 为 Agent 流程、中间件和 Streamlit 交互补充自动化测试。
+- 为浏览器交互补充自动化端到端测试，并评估SSE或NDJSON流式回答。
 - 将本地请求日志接入集中式日志与指标平台，并建立延迟、错误率和工具失败告警。
 - 增加公开部署所需的身份认证、TLS入口、监控告警和多实例编排。
 

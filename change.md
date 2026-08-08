@@ -819,3 +819,65 @@ Agent使用`InMemorySaver`按`thread_id`保存多轮消息，Streamlit进程退�
 ### 相关提交
 
 - 建议使用中文提交说明：`评估：扩充60条RAG用例并建立余弦基线`
+
+## 2026-08-06至2026-08-08：使用FastAPI解耦前后端服务
+
+### 原问题
+
+- Streamlit直接导入并创建`ReactAgent`，页面层同时负责UI、模型编排、SQLite连接和错误处理，职责耦合较重。
+- 每个浏览器会话持有独立Agent和SQLite连接，增加了资源数量，也无法通过标准HTTP接口复用后端能力。
+- 原单容器只运行Streamlit，无法独立扩缩、检查或替换前后端服务。
+- 项目缺少可审查的请求/响应契约、API参数校验、HTTP客户端错误边界和后端接口测试。
+
+### 修改内容
+
+1. 固定`fastapi==0.141.1`、`uvicorn==0.52.1`和`httpx==0.28.1`运行依赖，并通过全新环境解析演练和`pip check`验证兼容性。
+2. 新增`backend`包，使用Pydantic严格模型定义健康、聊天、历史和错误响应；拒绝额外字段、非法UUID4、空问题及超过4000字符的输入。
+3. 使用FastAPI应用工厂和`lifespan`管理ReactAgent：服务启动时创建一次共享实例，关闭时在`finally`中释放SQLite连接。
+4. 新增`GET /health`、`POST /api/v1/chat`和`GET /api/v1/sessions/{thread_id}/messages`，并通过依赖注入复用应用状态中的Agent。
+5. 聊天接口收集LangGraph阶段输出并返回最后一条有效文本；Agent失败时返回502、安全说明和12位问题编号，空结果也不伪造回答。
+6. 新增`frontend`包，使用复用连接池的HTTPX客户端调用聊天和历史接口，分别设置10秒连接超时和120秒总超时，并校验成功与错误响应结构。
+7. 使用`API_BASE_URL`环境变量区分本机和容器地址；系统环境变量优先于`.env`，地址必须使用HTTP或HTTPS协议。
+8. 重构`app.py`，删除对`ReactAgent`和`AgentExecutionError`的直接导入；页面只负责URL会话、HTTP调用、安全提示和本地打字效果。
+9. 增加AST架构测试，阻止Streamlit入口重新绕过FastAPI直接依赖Agent。
+10. 根据Starlette当前TestClient导入顺序，在开发依赖中固定`httpx2==2.7.0`，消除旧HTTPX兼容层弃用警告；生产前端继续使用`httpx`。
+11. 将Dockerfile改为api/web共用的非root镜像，默认入口为FastAPI，并由Compose为两个服务覆盖独立命令。
+12. 将Compose拆成`api`与`web`：前者独占模型密钥、Chroma、SQLite和日志挂载，后者只获得内部地址`http://api:8000`。
+13. 为两个服务增加独立健康检查，`web`等待`api`健康后启动；宿主机分别开放8000和8501端口。
+14. 扩大coverage配置，将`backend`和`frontend`纳入CI的60%覆盖率门禁，并增加API、客户端、配置、架构和容器安全测试。
+
+### 修改意义
+
+- UI、HTTP服务和Agent编排形成清晰边界，Streamlit可以替换为其他前端，FastAPI也可以独立供其他客户端调用。
+- Pydantic输入输出校验、版本化路由和统一HTTP状态使接口行为可测试、可文档化，并为后续认证、限流和流式协议保留扩展点。
+- 后端集中管理Agent与SQLite生命周期，前端只管理HTTP连接池，减少页面层资源职责和直接数据库访问。
+- 双容器通过内部DNS通信；模型密钥和运行数据只交给api，降低前端容器被利用时的数据暴露范围。
+- Swagger、双健康检查、服务依赖和独立日志使部署状态比单个Streamlit进程更容易诊断。
+- 使用假Agent和MockTransport覆盖正常、空响应、模型失败、连接失败与契约错误，不需要在CI中调用真实DashScope。
+
+### 实施过程中的修正
+
+- Windows PowerShell 5.1的`Invoke-RestMethod`将UTF-8 JSON显示为乱码；使用项目实际采用的HTTPX读取同一SQLite历史后确认用户问题、回答和来源均为正常中文，因此没有修改正确的后端编码。
+- FastAPI专项测试最初出现Starlette对旧`httpx`测试客户端的弃用警告；核对本机源码确认TestClient优先使用`httpx2`后，将其加入开发依赖并消除警告。
+- Compose健康检查使用YAML的`>-`折叠标量传递单个Python命令字符串，实际配置解析、容器启动和健康检查均通过，无需因IDE提示改写业务逻辑。
+- Ruff发现`app.py`导入块顺序不规范，使用自动修复后剩余错误为0。
+
+### 验证结果
+
+- 本机FastAPI和Streamlit双进程运行正常；真实聊天API生成正常中文答案，历史接口使用同一UUID恢复用户与助手消息。
+- 停止FastAPI后，Streamlit显示安全的后端连接提示，不暴露HTTPX调用栈。
+- HTTPX确认FastAPI响应编码为UTF-8，SQLite中的中文问题、回答和来源均未损坏。
+- Swagger能够展示健康、聊天和会话历史接口。
+- `docker compose config --quiet`无输出，服务列表为`api`和`web`。
+- Compose双服务启动成功，`smart-cleaning-agent-api`和`smart-cleaning-agent-web`均为`healthy`。
+- api/web容器内`pip check`均输出`No broken requirements found.`，两个进程均以`uid=999(appuser)`运行。
+- web容器只获得`API_BASE_URL=http://api:8000`且没有模型密钥；api容器安全注入模型密钥但验证过程不打印真实值。
+- api独占`storage`和`logs`挂载，web不挂载运行数据；最近100行容器日志没有`Traceback`、`PermissionError`或`ConnectionRefusedError`。
+- Ruff全项目检查修复1个导入顺序问题后剩余错误为0。
+- 完整自动化测试输出`76 passed`，不再出现Starlette TestClient弃用警告。
+- Agent、FastAPI后端、HTTP前端客户端和核心模块共695条可执行语句、131条未覆盖，总覆盖率为81.15%，达到CI的60%门禁。
+- 已暂存和未暂存补丁格式检查没有实际错误，仅有Dockerfile和`pyproject.toml`的本地LF/CRLF规范化提示。
+
+### 相关提交
+
+- 建议使用中文提交说明：`架构：使用FastAPI解耦前后端服务`

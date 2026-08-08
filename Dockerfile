@@ -41,16 +41,9 @@ RUN mkdir -p /app/storage /app/logs \
 # 后续启动命令使用普通用户执行，提高容器安全性。
 USER appuser
 
-# 声明Streamlit使用8501端口。
-EXPOSE 8501
+# 同一个基础镜像可分别运行FastAPI和Streamlit。
+EXPOSE 8000 8501
 
-# 定期访问Streamlit健康检查接口，判断应用是否正常运行。
-HEALTHCHECK \
-    --interval=30s \
-    --timeout=5s \
-    --start-period=30s \
-    --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"
-
-# 容器启动时运行Streamlit，并允许宿主机浏览器访问。
-CMD ["python", "-m", "streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+# 直接运行镜像时默认启动FastAPI；
+# Compose会为api和web服务分别覆盖启动命令。
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host=0.0.0.0", "--port=8000"]

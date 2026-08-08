@@ -48,6 +48,6 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check .
 
-      # 60%是当前62%基线的保护下限，低于该值时CI会失败。
+      # 60%是最低覆盖率门禁，防止新增模块缺少测试却进入主分支。
       - name: Run tests with coverage
         run: python -m pytest --cov --cov-fail-under=60 -q

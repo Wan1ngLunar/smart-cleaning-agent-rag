@@ -4,9 +4,17 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra"
 
-# 覆盖率聚焦核心包；Streamlit 页面暂时通过手工功能测试验收。
+# 覆盖率包含Agent、FastAPI后端和HTTP前端客户端；
+# Streamlit页面入口继续通过架构测试和手工交互验收。
 [tool.coverage.run]
-source = ["agent", "model", "rag", "utils"]
+source = [
+    "agent",
+    "backend",
+    "frontend",
+    "model",
+    "rag",
+    "utils",
+]
 omit = [
     "*/__pycache__/*",
 ]

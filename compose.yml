@@ -1,32 +1,99 @@
-# 定义项目包含的容器服务。
+# 两个服务复用同一个构建配置和本地镜像。
+x-application-image: &application-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: smart-cleaning-agent:local
+
 services:
-  app:
-    # 使用当前项目目录的Dockerfile构建镜像。
-    build:
-      context: .
-      dockerfile: Dockerfile
+  api:
+    # 合并上方公共镜像配置，避免重复维护构建参数。
+    <<: *application-image
 
-    # 为构建结果设置固定的本地镜像名称。
-    image: smart-cleaning-agent:local
-
-    # 设置容易在Docker Desktop中识别的容器名称。
-    container_name: smart-cleaning-agent
-
-    # 通过轻量init进程正确转发停止信号并回收子进程。
+    container_name: smart-cleaning-agent-api
     init: true
 
-    # 运行时读取密钥，密钥不会被写进镜像。
+    # 只有后端读取真实模型密钥。
     env_file:
       - .env
 
-    # 将Windows的8501端口映射到容器的8501端口。
+    # 宿主机可访问Swagger和健康接口。
     ports:
-      - "8501:8501"
+      - "8000:8000"
 
-    # 将数据库和日志保存到项目本地目录。
+    # Chroma、SQLite会话和日志只属于后端。
     volumes:
       - ./storage:/app/storage
       - ./logs:/app/logs
 
-    # Docker重启后自动恢复服务，手动停止的容器不会自动启动。
+    command:
+      - python
+      - -m
+      - uvicorn
+      - backend.main:app
+      - --host=0.0.0.0
+      - --port=8000
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen(
+          'http://127.0.0.1:8000/health',
+          timeout=3)
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+    restart: unless-stopped
+
+  web:
+    # 前端与后端使用相同代码镜像，但运行不同进程。
+    <<: *application-image
+
+    container_name: smart-cleaning-agent-web
+    init: true
+
+    # Docker服务名api可通过内部网络解析为后端容器。
+    # 前端不需要DASHSCOPE_API_KEY。
+    environment:
+      API_BASE_URL: http://api:8000
+
+    ports:
+      - "8501:8501"
+
+    # 后端健康后再启动前端，减少启动阶段连接失败。
+    depends_on:
+      api:
+        condition: service_healthy
+
+    command:
+      - python
+      - -m
+      - streamlit
+      - run
+      - app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen(
+          'http://127.0.0.1:8501/_stcore/health',
+          timeout=3)
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
     restart: unless-stopped

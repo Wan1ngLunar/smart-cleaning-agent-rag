@@ -4,4 +4,8 @@
 # 自动化测试、覆盖率统计和代码质量检查。
 pytest==9.1.1
 pytest-cov==7.1.0
+
+# Starlette TestClient优先使用httpx2，避免旧httpx兼容层弃用警告。
+httpx2==2.7.0
+
 ruff==0.16.0

@@ -1,39 +1,79 @@
 import time
+from collections.abc import Iterator
 
 import streamlit as st
 
-# AgentExecutionError只向页面提供安全提示和问题编号。
-from agent.react_agent import (
-    AgentExecutionError,
-    ReactAgent,
+from frontend.api_client import (
+    ApiClientError,
+    BackendApiClient,
 )
+from frontend.config import get_api_base_url
 from utils.session_handler import (
     create_thread_id,
     normalize_thread_id,
 )
 
+#这是浏览器前端页面代码，不直接连数据库、不运行 Agent、不调用向量库；
+#只通过 BackendApiClient HTTP 请求访问 FastAPI 后端服务，
+#实现对话、历史记录、新建会话、打字动画效果。
 
-def release_agent(agent: ReactAgent) -> None:
-    """Streamlit释放会话资源时关闭Agent的SQLite连接。"""
-    agent.close()
+def release_api_client(
+    api_client: BackendApiClient,
+) -> None:
+    """Streamlit释放会话资源时关闭HTTP连接池。"""
+    api_client.close()
 
 
 @st.cache_resource(
-    scope="session",
-    show_spinner=False,
-    on_release=release_agent,
+    scope="session", # 同一个浏览器标签页共用 1 个客户端；新开标签页才会新建另一个客户端。
+    show_spinner=False, # 拿到客户端时不显示加载转圈。
+    on_release=release_api_client, # 会话销毁时自动执行释放函数，关闭 http 连接。
 )
-def get_agent() -> ReactAgent:
-    """每个浏览器会话复用一个独立的Agent和SQLite连接。"""
-    return ReactAgent()
+def get_api_client() -> BackendApiClient:
+    """每个浏览器会话复用一个HTTPX连接池。"""
+    return BackendApiClient(
+        base_url=get_api_base_url(),
+    )
+
+
+def load_history(
+    api_client: BackendApiClient,
+    thread_id: str,
+) -> tuple[
+    list[dict[str, str]],
+    bool,
+]:
+    """通过FastAPI读取历史，并返回是否成功。"""
+    try:
+        messages = api_client.get_history(
+            thread_id
+        )
+    except ApiClientError as error:
+        # 页面只展示客户端整理后的安全说明。
+        st.error(
+            error.public_message
+        )
+        return [], False
+
+    return messages, True
+
+
+def typewriter(
+    text: str,
+) -> Iterator[str]:
+    """把完整API回答拆成字符流，仅用于页面打字效果。"""
+    for char in text:
+        time.sleep(0.01)
+        yield char
 
 
 st.title("智扫通机器人智能客服")
 st.divider()
 
-agent = get_agent()
+# 前端只创建HTTP客户端，不再创建ReactAgent。
+api_client = get_api_client()
 
-# URL中的thread_id允许浏览器刷新或应用重启后定位同一个持久化会话。
+# URL中的thread_id用于定位FastAPI后端保存的SQLite会话。
 raw_thread_id = st.query_params.get(
     "thread_id"
 )
@@ -41,23 +81,40 @@ thread_id = normalize_thread_id(
     raw_thread_id
 )
 
-# 参数缺失、非法或格式不标准时，将安全的新ID写回浏览器地址栏。
+# 非法或缺失的ID会被替换成安全的新UUID。
 if raw_thread_id != thread_id:
     st.query_params["thread_id"] = thread_id
 
-# 首次打开页面或URL切换到另一个会话时，从SQLite恢复页面历史。
-if st.session_state.get("thread_id") != thread_id:
-    st.session_state["thread_id"] = thread_id
-    st.session_state["message"] = agent.get_history(
-        thread_id
+# 如果缓存里存的会话ID 和 URL里的ID不一致（切换会话/第一次打开页面）
+if st.session_state.get(
+    "thread_id"
+) != thread_id:
+    # 调用后端加载历史对话
+    history, history_loaded = load_history(
+        api_client,
+        thread_id,
     )
-elif "message" not in st.session_state:
-    # 防止局部Session State丢失时页面没有初始化消息列表。
-    st.session_state["message"] = agent.get_history(
-        thread_id
-    )
+    st.session_state["message"] = history
 
-# 只显示会话ID前8位，完整ID已经保存在URL中。
+    # 加载成功才更新缓存thread_id；失败下次刷新会重新加载
+    if history_loaded:
+        st.session_state[
+            "thread_id"
+        ] = thread_id
+# 缓存里没有message对话列表，同样加载历史
+elif "message" not in st.session_state:
+    history, history_loaded = load_history(
+        api_client,
+        thread_id,
+    )
+    st.session_state["message"] = history
+
+    if history_loaded:
+        st.session_state[
+            "thread_id"
+        ] = thread_id
+
+# 页面只显示会话ID前8位，完整ID保留在URL中。
 st.sidebar.caption(
     f"当前会话：{thread_id[:8]}…"
 )
@@ -65,14 +122,18 @@ st.sidebar.caption(
 if st.sidebar.button("新建对话"):
     new_thread_id = create_thread_id()
 
-    # 同时更新URL、模型会话键和页面消息，避免新旧状态错位。
-    st.query_params["thread_id"] = new_thread_id
-    st.session_state["thread_id"] = new_thread_id
+    # 新会话只切换UUID；后端首次收到问题时创建持久化状态。
+    st.query_params["thread_id"] = (
+        new_thread_id
+    )
+    st.session_state["thread_id"] = (
+        new_thread_id
+    )
     st.session_state["message"] = []
     st.rerun()
 
 for message in st.session_state["message"]:
-    # 页面历史只包含经过ReactAgent过滤的用户和最终助手文本。
+    # 历史已经经过后端和客户端两层公开消息校验。
     st.chat_message(
         message["role"]
     ).write(
@@ -82,7 +143,9 @@ for message in st.session_state["message"]:
 prompt = st.chat_input()
 
 if prompt:
-    st.chat_message("user").write(prompt)
+    st.chat_message("user").write(
+        prompt
+    )
     st.session_state["message"].append(
         {
             "role": "user",
@@ -90,58 +153,36 @@ if prompt:
         }
     )
 
-    response_messages: list[str] = []
+    assistant_message = st.chat_message(
+        "assistant"
+    )
 
-    with st.spinner("智能客服思考中..."):
-        response_stream = agent.execute_stream(
-            prompt,
-            thread_id=thread_id,
-        )
-
-        def capture(
-            generator,
-            cache_list: list[str],
-        ):
-            """缓存Agent输出，并拆成字符流交给Streamlit渲染。"""
-            for chunk in generator:
-                cache_list.append(chunk)
-
-                # 逐字符输出只负责页面打字效果，不改变模型或持久化状态。
-                for char in chunk:
-                    time.sleep(0.01)
-                    yield char
-
-        # 复用同一个助手消息容器，正常文本和错误提示不会分成两个气泡。
-        assistant_message = st.chat_message(
-            "assistant"
-        )
-
+    with st.spinner(
+        "智能客服思考中..."
+    ):
         try:
-            assistant_message.write_stream(
-                capture(
-                    response_stream,
-                    response_messages,
-                )
+            # Streamlit只发送HTTP请求，不直接执行Agent。
+            answer = api_client.chat(
+                thread_id=thread_id,
+                message=prompt,
             )
-        except AgentExecutionError as error:
-            # 页面只展示安全提示；真实异常堆栈已经按问题编号写入日志。
+        except ApiClientError as error:
             assistant_message.error(
                 error.public_message
             )
         else:
-            if response_messages:
-                # Agent可能产生多个输出，页面只缓存最后的完整回答。
-                st.session_state["message"].append(
-                    {
-                        "role": "assistant",
-                        "content": response_messages[-1].strip(),
-                    }
-                )
-            else:
-                # 防止异常空流导致访问列表最后一项时报错。
-                assistant_message.warning(
-                    "Agent没有返回可展示的文本，请稍后重试。"
-                )
+            # 后端已经返回完整回答，这里只模拟页面打字效果。
+            assistant_message.write_stream(
+                typewriter(answer)
+            )
+            st.session_state[
+                "message"
+            ].append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                }
+            )
 
-            # 只有正常完成时才刷新，避免错误提示刚显示就被清除。
+            # 正常完成后刷新，并通过历史接口验证持久化结果。
             st.rerun()
