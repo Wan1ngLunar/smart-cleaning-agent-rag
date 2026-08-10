@@ -35,3 +35,11 @@ def test_demo_configuration_is_deterministic():
 def test_chroma_distance_metric_is_cosine():
     """文本向量库应显式使用余弦距离，不能退回默认L2。"""
     assert chroma_conf["distance_metric"] == "cosine"
+
+def test_hybrid_retrieval_config_uses_evaluation_winner():
+    """混合检索应使用30组参数实验选出的最优配置。"""
+    assert chroma_conf["hybrid_retrieval"] == {
+        "vector_candidate_k": 10,
+        "bm25_candidate_k": 20,
+        "rrf_constant": 10,
+    }

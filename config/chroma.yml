@@ -6,6 +6,12 @@ distance_metric: cosine
 # 数据库和导入状态统一放在被 Git 忽略的 storage 目录。
 persist_directory: storage/chroma
 k: 3
+# 混合检索先分别召回候选，再通过RRF融合成最终Top-K结果。
+# 这组参数来自36条正例、30组参数组合的A/B实验最优结果。
+hybrid_retrieval:
+  vector_candidate_k: 10
+  bm25_candidate_k: 20
+  rrf_constant: 10
 data_path: data
 md5_hex_store: storage/ingested_md5.txt
 allow_knowledge_file_type: ["txt", "pdf"]

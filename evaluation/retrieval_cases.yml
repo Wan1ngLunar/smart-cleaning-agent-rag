@@ -55,8 +55,10 @@ cases:
   - id: operating_temperature_maintenance
     kind: positive
     query: "扫地机器人应该避免在哪些高温或低温环境中长时间工作？"
+    # 两份资料都直接说明了冬季低温和夏季高温环境下的使用注意事项。
     expected_sources:
       - "维护保养.txt"
+      - "扫地机器人100问2.txt"
 
   - id: charging_base_infrared_cleaning
     kind: positive

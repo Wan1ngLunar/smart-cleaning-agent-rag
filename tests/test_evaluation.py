@@ -238,3 +238,19 @@ def test_is_case_passed_distinguishes_answers_and_rejections():
         negative_case,
         valid_answer,
     )
+
+def test_temperature_case_accepts_both_complete_sources():
+    """高低温用例应接受人工核验后确认有效的两份来源。"""
+    cases = load_cases()
+
+    temperature_case = next(
+        case
+        for case in cases
+        if case.case_id
+        == "operating_temperature_maintenance"
+    )
+
+    assert temperature_case.expected_sources == (
+        "维护保养.txt",
+        "扫地机器人100问2.txt",
+    )

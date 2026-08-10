@@ -83,6 +83,51 @@ class VectorStoreService:
             k=result_count,
         )
 
+    def get_all_documents(self) -> list[Document]:
+        """以只读方式导出Chroma集合中的全部知识片段。"""
+        collection_data = self.vector_store.get(
+            include=[
+                "documents",
+                "metadatas",
+            ]
+        )
+
+        # Chroma始终返回ID；正文和元数据由include参数指定。
+        document_ids = list(
+            collection_data.get("ids") or []
+        )
+        page_contents = list(
+            collection_data.get("documents") or []
+        )
+        metadatas = list(
+            collection_data.get("metadatas") or []
+        )
+
+        # 三组数据依靠相同下标对应，长度不同会造成正文与来源错配。
+        if not (
+            len(document_ids)
+            == len(page_contents)
+            == len(metadatas)
+        ):
+            raise ValueError(
+                "Chroma返回的ID、正文和元数据数量不一致"
+            )
+
+        # 保留Chroma文档ID，后续RRF会使用它识别两路检索中的同一片段。
+        return [
+            Document(
+                id=str(document_id),
+                page_content=str(page_content or ""),
+                metadata=dict(metadata or {}),
+            )
+            for document_id, page_content, metadata in zip(
+                document_ids,
+                page_contents,
+                metadatas,
+                strict=True,
+            ) # 同时遍历三个列表，每次取出同一下标的三组值，strict=True：强制要求三个列表长度完全相同，长度不一致直接抛错（双重保险）
+        ]
+
     def load_document(self):
         """读取知识文件、按 MD5 跳过已处理文件，并写入 Chroma。"""
 
