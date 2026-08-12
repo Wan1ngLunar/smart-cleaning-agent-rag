@@ -1,5 +1,10 @@
 import pytest
 
+from evaluation.compare_query_rewriting import (
+    TARGET_CASE_IDS,
+    calculate_mrr,
+    find_expected_rank,
+)
 from evaluation.evaluate_answerability import (
     SMOKE_CASE_IDS,
     is_case_passed,
@@ -253,4 +258,53 @@ def test_temperature_case_accepts_both_complete_sources():
     assert temperature_case.expected_sources == (
         "维护保养.txt",
         "扫地机器人100问2.txt",
+    )
+
+def test_query_rewriting_target_cases_remain_in_dataset():
+    """查询改写实验的固定困难用例不能被评测集意外删除。"""
+    cases = load_cases()
+    cases_by_id = {
+        case.case_id: case
+        for case in cases
+    }
+
+    assert len(TARGET_CASE_IDS) == 4
+
+    for case_id in TARGET_CASE_IDS:
+        assert case_id in cases_by_id
+
+        # 查询改写实验只评估应该由知识库回答的正例。
+        assert cases_by_id[case_id].kind == "positive"
+
+        # 正例必须具有预期来源，否则无法比较改写前后的排名。
+        assert cases_by_id[
+            case_id
+        ].expected_sources
+
+
+def test_query_rewriting_ranking_helpers():
+    """来源排名和MRR计算应正确处理命中与Top-3未命中。"""
+    sources = (
+        "错误来源.txt",
+        "正确来源.txt",
+        "其他来源.txt",
+    )
+
+    rank = find_expected_rank(
+        sources,
+        ("正确来源.txt",),
+    )
+    missing_rank = find_expected_rank(
+        sources,
+        ("未出现来源.txt",),
+    )
+
+    assert rank == 2
+    assert missing_rank is None
+
+    # 排名1的倒数是1，排名2的倒数是0.5，未命中贡献0。
+    assert calculate_mrr(
+        [1, 2, None]
+    ) == pytest.approx(
+        (1.0 + 0.5 + 0.0) / 3
     )
