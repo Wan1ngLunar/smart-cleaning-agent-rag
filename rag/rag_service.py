@@ -3,8 +3,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from model.factory import chat_model
-from rag.vector_store import VectorStoreService
-from utils.config_handler import rag_conf
+from rag.retrieval_pipeline import HybridRerankRetriever
 from utils.logger_handler import logger
 from utils.prompt_loader import load_rag_prompts
 
@@ -20,19 +19,15 @@ INSUFFICIENT_CONTEXT_MARKER = "__INSUFFICIENT_CONTEXT__"
 class RagSummarizeService:
     """检索本地知识库，生成回答并附加可追溯的参考来源。"""
 
-    def __init__(self):
-        self.vector_store = VectorStoreService()
-
-        # 从配置读取低分过滤门槛，避免在业务代码中写死具体数值。
-        self.min_relevance_score = float(
-            rag_conf["min_relevance_score"]
-        )
-
-        # 相关性分数应使用0到1之间的门槛，配置错误时立即停止启动。
-        if not 0 <= self.min_relevance_score <= 1:
-            raise ValueError(
-                "min_relevance_score必须在0到1之间"
-            )
+    def __init__(
+            self,
+            retriever: HybridRerankRetriever | None = None,
+    ):
+        """初始化检索流水线和回答生成链。"""
+        # 正式环境创建真实混合检索流水线；
+        # 测试可以注入假检索器，避免调用Chroma和外部模型接口。
+        self.retriever = retriever or HybridRerankRetriever()
+        self._closed = False
 
         self.prompt_text = load_rag_prompts()
 
@@ -62,9 +57,17 @@ class RagSummarizeService:
     def retriever_docs(
             self,
             query: str,
-    ) -> list[tuple[Document, float]]:
-        """返回知识片段及其相关性分数，供低分过滤使用。"""
-        return self.vector_store.search_with_relevance_scores(query)
+    ) -> list[Document]:
+        """返回经过混合召回和重排序的最终知识片段。"""
+        return self.retriever.retrieve(query)
+
+    def close(self) -> None:
+        """关闭检索流水线持有的HTTP连接。"""
+        if self._closed:
+            return
+
+        self.retriever.close()
+        self._closed = True
 
     @staticmethod
     def _format_source(document: Document) -> str:
@@ -120,20 +123,19 @@ class RagSummarizeService:
 
     def rag_summarize(self, query: str) -> str:
         """基于有效检索片段回答问题；无资料时不调用模型。"""
-        scored_documents = self.retriever_docs(query)
+        retrieved_documents = self.retriever_docs(query)
 
+        # 流水线已经完成相关性筛选，这里只防御性过滤空白片段。
         context_docs = [
             document
-            for document, score in scored_documents
-            # 同时过滤空白片段和低于最低相关性分数的片段。
+            for document in retrieved_documents
             if document.page_content.strip()
-               and score >= self.min_relevance_score
         ]
 
         if not context_docs:
             # 日志只记录结果数量，不记录可能包含隐私信息的用户原始问题。
             logger.warning(
-                "[rag_summarize]未检索到达到最低相关性分数的有效知识片段"
+                "[rag_summarize]检索流水线未返回有效知识片段"
             )
             return NO_CONTEXT_RESPONSE
 
@@ -169,4 +171,12 @@ class RagSummarizeService:
 if __name__ == "__main__":
     rag = RagSummarizeService()
 
-    print(rag.rag_summarize("小户型适合哪些扫地机器人"))
+    try:
+        print(
+            rag.rag_summarize(
+                "小户型适合哪些扫地机器人"
+            )
+        )
+    finally:
+        # 即使模型调用失败，也要释放重排序器的HTTP连接。
+        rag.close()

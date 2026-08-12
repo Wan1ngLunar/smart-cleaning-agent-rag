@@ -2,6 +2,7 @@ import csv
 import json
 import os
 from datetime import date
+from threading import Lock
 
 from langchain_core.tools import tool
 
@@ -10,16 +11,59 @@ from utils.config_handler import agent_conf
 from utils.logger_handler import logger
 from utils.path_tool import get_abs_path
 
-# RAG 服务在进程内复用，避免每次工具调用都重新连接 Chroma。
-rag = RagSummarizeService()
+# RAG服务采用进程内延迟初始化：
+# 导入模块时不连接Chroma和重排序接口，第一次调用工具时才创建。
+_rag_service: RagSummarizeService | None = None
+
+# FastAPI可能并发处理请求，使用锁避免同时创建多个RAG服务。
+_rag_service_lock = Lock()
+
+def get_rag_service() -> RagSummarizeService:
+    """延迟创建并复用进程内唯一的RAG服务。"""
+    global _rag_service
+
+    # 已经创建时直接返回，避免每次工具调用都重新加锁。
+    if _rag_service is not None:
+        return _rag_service
+
+    # 首次并发调用时，只允许一个线程执行初始化。
+    with _rag_service_lock:
+        # 获取锁后必须再次判断，防止等待期间其他线程已经完成创建。
+        if _rag_service is None:
+            _rag_service = RagSummarizeService()
+
+        return _rag_service
+
+
+def close_rag_service() -> None:
+    """关闭并清空进程内RAG服务；重复调用不会报错。"""
+    global _rag_service
+
+    with _rag_service_lock:
+        service = _rag_service
+
+        # 把当前_rag_service保存到局部变量service
+        # 立刻把全局变量_rag_service = None
+        # 释放锁！关闭资源的逻辑放到锁外面执行
+        _rag_service = None
+
+    if service is not None:
+        # 关闭qwen3-rerank客户端持有的HTTP连接池。
+        service.close()
 
 # 缓存结构：用户 ID -> 月份 -> 报告字段 -> 字段内容。
 external_data: dict[str, dict[str, dict[str, str]]] = {}
 
 
-@tool(description="从向量存储中检索参考资料")
+@tool(
+    description=(
+        "从本地知识库执行向量与BM25混合检索，"
+        "经过RRF融合和重排序后生成带来源的回答"
+    )
+)
 def rag_summarize(query: str) -> str:
-    return rag.rag_summarize(query)
+    """延迟取得共享RAG服务并执行知识库问答。"""
+    return get_rag_service().rag_summarize(query)
 
 
 @tool(

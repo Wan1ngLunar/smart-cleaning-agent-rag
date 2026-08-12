@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from utils.config_handler import agent_conf, chroma_conf
+from utils.config_handler import (
+    agent_conf,
+    chroma_conf,
+    rag_conf,
+)
 from utils.path_tool import get_abs_path, get_project_root
 
 
@@ -43,3 +47,24 @@ def test_hybrid_retrieval_config_uses_evaluation_winner():
         "bm25_candidate_k": 20,
         "rrf_constant": 10,
     }
+
+def test_rerank_config_covers_hybrid_candidates():
+    """重排序配置应覆盖困难候选，并最终恢复现有Top-3。"""
+    rerank_config = rag_conf["rerank"]
+
+    assert rerank_config["model_name"] == (
+        "qwen3-rerank"
+    )
+    assert rerank_config["candidate_k"] == 10
+    assert rerank_config["top_n"] == (
+        chroma_conf["k"]
+    )
+    assert (
+        rerank_config["candidate_k"]
+        > rerank_config["top_n"]
+    )
+    assert (
+        rerank_config["timeout_seconds"]
+        > 0
+    )
+    assert rerank_config["instruct"]

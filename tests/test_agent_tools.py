@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 
+import agent.tools.agent_tools as tools_module
 from agent.tools.agent_tools import (
     external_data,
     fetch_external_data,
@@ -106,3 +107,73 @@ def test_fetch_external_data_returns_empty_string_when_missing(
     # 工具参数可能来自用户输入，不能写入持久化日志。
     assert private_user_id not in caplog.text
     assert private_month not in caplog.text
+
+def test_rag_service_is_lazily_created_reused_and_closed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """RAG服务应首次调用时创建，后续复用，并能显式关闭。"""
+
+    class StubRagService:
+        """替代真实RAG服务，避免测试访问Chroma和外部接口。"""
+
+        def __init__(self):
+            self.received_queries: list[str] = []
+            self.close_count = 0
+
+        def rag_summarize(
+            self,
+            query: str,
+        ) -> str:
+            """记录工具传入的问题并返回固定测试回答。"""
+            self.received_queries.append(query)
+            return f"测试回答：{query}"
+
+        def close(self) -> None:
+            """记录资源关闭次数。"""
+            self.close_count += 1
+
+    created_services: list[StubRagService] = []
+
+    def create_stub_rag_service() -> StubRagService:
+        """记录延迟初始化实际创建的服务实例。"""
+        service = StubRagService()
+        created_services.append(service)
+        return service
+
+    # 确保测试开始前没有其他测试遗留的共享服务。
+    tools_module.close_rag_service()
+
+    # 替换构造函数，保证测试不会连接真实知识库或重排序接口。
+    monkeypatch.setattr(
+        tools_module,
+        "RagSummarizeService",
+        create_stub_rag_service,
+    )
+
+    # 只修改构造函数不会创建服务，证明初始化确实是延迟的。
+    assert created_services == []
+
+    first_service = tools_module.get_rag_service()
+    second_service = tools_module.get_rag_service()
+
+    # 连续获取两次仍然只有一个实例，证明服务被进程内复用。
+    assert first_service is second_service
+    assert len(created_services) == 1
+
+    result = tools_module.rag_summarize.invoke(
+        {
+            "query": "如何清理滤网？",
+        }
+    )
+
+    assert result == "测试回答：如何清理滤网？"
+    assert first_service.received_queries == [
+        "如何清理滤网？"
+    ]
+
+    tools_module.close_rag_service()
+    tools_module.close_rag_service()
+
+    # 重复关闭不会重复释放同一个服务。
+    assert first_service.close_count == 1
+    assert tools_module._rag_service is None

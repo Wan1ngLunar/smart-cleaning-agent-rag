@@ -13,3 +13,20 @@ embedding_batch_size: 10
 # 低于该分数的片段不发送给模型，用于过滤明显无关的检索结果。
 # 该值只负责第一层粗过滤，不能单独判断知识库是否能够回答问题。
 min_relevance_score: 0.20
+
+# 使用qwen3-rerank对混合召回候选进行问答相关性重排序。
+rerank:
+  model_name: qwen3-rerank
+
+  # 重排融合结果的前10条，覆盖当前第4和第6名的固定困难证据。
+  candidate_k: 10
+
+  # 最终仍向RAG生成模型提供3条证据，与现有Top-K保持一致。
+  top_n: 3
+
+  # 单次重排序HTTP请求的最大等待时间，单位为秒。
+  timeout_seconds: 30
+
+  # 要求模型优先寻找能够直接回答问题的片段，而非仅判断主题相似。
+  instruct: >-
+    Given a web search query, retrieve relevant passages that answer the query.

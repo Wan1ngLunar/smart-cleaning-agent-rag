@@ -9,21 +9,28 @@ from rag.rag_service import (
 from utils.prompt_loader import load_rag_prompts
 
 
-class StubVectorStore:
-    """返回预设的文档和分数，避免测试依赖真实Chroma数据库。"""
+class StubRetriever:
+    """返回预设文档，避免测试调用真实检索和重排序服务。"""
 
     def __init__(
         self,
-        scored_documents: list[tuple[Document, float]],
+        documents: list[Document],
     ):
-        self.scored_documents = scored_documents
+        self.documents = documents
+        self.last_query: str | None = None
+        self.close_count = 0
 
-    def search_with_relevance_scores(
+    def retrieve(
         self,
         query: str,
-    ) -> list[tuple[Document, float]]:
-        # 保留query参数，用于模拟真实向量存储接口。
-        return self.scored_documents
+    ) -> list[Document]:
+        """记录问题并返回预设的最终检索结果。"""
+        self.last_query = query
+        return self.documents
+
+    def close(self) -> None:
+        """记录资源关闭次数。"""
+        self.close_count += 1
 
 
 class StubChain:
@@ -41,34 +48,16 @@ class StubChain:
 def build_service(
     documents: list[Document],
     answer: str = "建议定期清理滚刷。[1]",
-    relevance_scores: list[float] | None = None,
 ) -> tuple[RagSummarizeService, StubChain]:
-    """绕过生产初始化，组装使用预设文档、分数和回答的测试服务。"""
+    """绕过生产初始化，组装使用预设文档和回答的测试服务。"""
     service = RagSummarizeService.__new__(
         RagSummarizeService
     )
     chain = StubChain(answer)
 
-    # 没有指定分数时使用0.9，代表测试文档具有较高相关性。
-    if relevance_scores is None:
-        relevance_scores = [0.9] * len(documents)
-
-    # 文档和分数必须一一对应，数量不一致说明测试数据写错。
-    if len(documents) != len(relevance_scores):
-        raise ValueError("测试文档数量必须与分数数量一致")
-
-    scored_documents = list(
-        zip(
-            documents,
-            relevance_scores,
-            strict=True,
-        )
-    )
-
-    service.vector_store = StubVectorStore(
-        scored_documents
-    )
-    service.min_relevance_score = 0.20
+    # 测试使用假检索器，不访问Chroma、BM25或外部重排序接口。
+    service.retriever = StubRetriever(documents)
+    service._closed = False
     service.chain = chain
 
     return service, chain
@@ -139,21 +128,12 @@ def test_rag_keeps_sources_when_model_returns_empty_answer():
     assert EMPTY_ANSWER_RESPONSE in result
     assert "[1] 维护保养.txt" in result
 
-def test_rag_does_not_call_model_when_all_documents_score_too_low():
-    """所有片段低于最低分时，应直接拒答且不调用模型。"""
-    documents = [
-        Document(
-            page_content="这是一段与用户问题无关的知识内容。",
-            metadata={"source": "data/无关资料.txt"},
-        )
-    ]
-    service, chain = build_service(
-        documents,
-        relevance_scores=[0.10],
-    )
+def test_rag_does_not_call_model_when_retriever_returns_empty():
+    """检索流水线没有返回文档时，服务应直接拒答。"""
+    service, chain = build_service([])
 
     result = service.rag_summarize(
-        "番茄炒蛋应该放多少糖？"
+        "知识库无法回答的问题"
     )
 
     assert result == NO_CONTEXT_RESPONSE
@@ -170,7 +150,6 @@ def test_rag_rejects_when_model_reports_insufficient_context():
     service, chain = build_service(
         documents,
         answer=INSUFFICIENT_CONTEXT_MARKER,
-        relevance_scores=[0.80],
     )
 
     result = service.rag_summarize(
@@ -191,6 +170,15 @@ def test_rag_prompt_contains_insufficient_context_marker():
     prompt_text = load_rag_prompts()
 
     assert INSUFFICIENT_CONTEXT_MARKER in prompt_text
+
+def test_rag_service_closes_retriever_only_once():
+    """重复关闭RAG服务时不应重复关闭检索流水线。"""
+    service, _ = build_service([])
+
+    service.close()
+    service.close()
+
+    assert service.retriever.close_count == 1
 
 def test_rag_scope_rules_are_sent_as_system_message():
     """知识库边界必须使用System消息，不能与用户输入混为普通文本。"""

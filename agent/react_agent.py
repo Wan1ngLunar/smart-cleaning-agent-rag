@@ -7,6 +7,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage
 
 from agent.tools.agent_tools import (
+    close_rag_service,
     fetch_external_data,
     fill_context_for_report,
     get_current_month,
@@ -80,12 +81,15 @@ class ReactAgent:
             raise
 
     def close(self) -> None:
-        """关闭SQLite连接；重复调用也不会报错。"""
-        if self._checkpoint_connection is None:
-            return
+        """关闭SQLite连接和共享RAG服务；重复调用也不会报错。"""
+        if self._checkpoint_connection is not None:
+            # 释放LangGraph会话检查点数据库的文件句柄。
+            self._checkpoint_connection.close()
+            self._checkpoint_connection = None
 
-        self._checkpoint_connection.close()
-        self._checkpoint_connection = None
+        # 释放RAG重排序器持有的HTTP连接池。
+        # 如果本进程从未调用RAG工具，该函数不会创建或关闭任何服务。
+        close_rag_service()
 
     def get_history(
             self,
