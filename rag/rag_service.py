@@ -1,3 +1,5 @@
+import re
+
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -14,6 +16,10 @@ NO_CONTEXT_RESPONSE = (
 EMPTY_ANSWER_RESPONSE = "已检索到参考资料，但模型未生成有效回答。"
 # 模型判断资料不足时返回该内部标记，最终不会直接展示给用户。
 INSUFFICIENT_CONTEXT_MARKER = "__INSUFFICIENT_CONTEXT__"
+# 匹配模型正文中的来源编号，例如[1]或[2]。
+SOURCE_CITATION_PATTERN = re.compile(
+    r"\[(\d+)\]"
+)
 
 
 class RagSummarizeService:
@@ -113,13 +119,53 @@ class RagSummarizeService:
         return "\n\n".join(context_parts), tuple(source_ids)
 
     @staticmethod
-    def _append_sources(answer: str, sources: tuple[str, ...]) -> str:
-        """由服务层稳定追加来源列表，不依赖模型自行生成文件名。"""
-        source_lines = "\n".join(
-            f"[{source_id}] {source}"
-            for source_id, source in enumerate(sources, start=1)
+    def _append_sources(
+            answer: str,
+            sources: tuple[str, ...],
+    ) -> str:
+        """给大模型输出的回答末尾自动追加「参考来源：[1] xxx.pdf [2] yyy.pdf」
+            核心逻辑：只把正文里面真正被引用过的编号，放到文末参考来源列表，不是把全部检索出来的文档都堆上去。"""
+        # 正文里面实际引用过的编号，去重、保留顺序。
+        cited_source_ids = tuple(
+            dict.fromkeys(
+                int(source_id)
+                for source_id in (
+                    SOURCE_CITATION_PATTERN.findall(
+                        answer
+                    )
+                )
+            )
         )
-        return f"{answer}\n\n参考来源：\n{source_lines}"
+
+        if answer == EMPTY_ANSWER_RESPONSE:
+            # 模型异常返回空文本时，仍保留全部检索来源帮助排查。
+            cited_source_ids = tuple(
+                range(1, len(sources) + 1)
+            )
+
+        # 删除超出来源数量的无效编号，但不能重新编号。
+        valid_source_ids = tuple(
+            source_id
+            for source_id in cited_source_ids
+            if 1 <= source_id <= len(sources)
+        )
+
+        if not valid_source_ids:
+            # 没有有效正文引用时不伪造参考来源。
+            logger.warning(
+                "[rag_summarize]回答没有有效的正文来源引用"
+            )
+            return answer
+
+        source_lines = "\n".join(
+            f"[{source_id}] {sources[source_id - 1]}"
+            for source_id in valid_source_ids
+        )
+
+        return (
+            f"{answer}\n\n"
+            f"参考来源：\n{source_lines}"
+        )
 
     def rag_summarize(self, query: str) -> str:
         """基于有效检索片段回答问题；无资料时不调用模型。"""

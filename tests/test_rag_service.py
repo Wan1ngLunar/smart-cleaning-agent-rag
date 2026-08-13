@@ -91,11 +91,35 @@ def test_rag_answer_appends_deduplicated_sources_with_pdf_page():
 
     assert "建议定期清理滚刷。[1]" in result
     assert result.count("[1] 扫地机器人100问.pdf（第1页）") == 1
-    assert result.count("[2] 维护保养.txt") == 1
+    # 正文只引用了[1]，因此不应列出没有使用的来源[2]。
+    assert "[2] 维护保养.txt" not in result
     assert chain.last_payload is not None
     assert "来源[1]" in chain.last_payload["context"]
     assert "来源[2]" in chain.last_payload["context"]
 
+def test_rag_keeps_original_id_for_only_cited_source():
+    """只引用第二个来源时，输出必须保留编号[2]。"""
+    documents = [
+        Document(
+            page_content="第一份辅助资料。",
+            metadata={"source": "data/辅助资料.txt"},
+        ),
+        Document(
+            page_content="第二份资料包含直接答案。",
+            metadata={"source": "data/直接答案.txt"},
+        ),
+    ]
+    service, _ = build_service(
+        documents,
+        answer="应采用第二份资料中的方法[2]。",
+    )
+
+    result = service.rag_summarize(
+        "应该采用什么方法？"
+    )
+
+    assert "[1] 辅助资料.txt" not in result
+    assert "[2] 直接答案.txt" in result
 
 def test_rag_does_not_call_model_without_valid_documents():
     """检索为空或只有空白内容时，应直接返回空结果而不是让模型编造。"""

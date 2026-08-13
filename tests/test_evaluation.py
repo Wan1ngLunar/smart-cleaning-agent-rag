@@ -1,5 +1,7 @@
 import pytest
+from langchain_core.messages import AIMessage
 
+from evaluation import evaluate_tool_routing
 from evaluation.compare_query_rewriting import (
     TARGET_CASE_IDS,
     calculate_mrr,
@@ -7,6 +9,8 @@ from evaluation.compare_query_rewriting import (
 )
 from evaluation.evaluate_answerability import (
     SMOKE_CASE_IDS,
+    calculate_nearest_rank_percentile,
+    extract_cited_sources,
     is_case_passed,
     select_cases,
 )
@@ -307,4 +311,120 @@ def test_query_rewriting_ranking_helpers():
         [1, 2, None]
     ) == pytest.approx(
         (1.0 + 0.5 + 0.0) / 3
+    )
+
+def test_extract_cited_sources_normalizes_pdf_pages():
+    """引用解析应忽略正文编号，并移除PDF展示页码。"""
+    answer = (
+        "建议定期清理滤网[1]。\n\n"
+        "参考来源：\n"
+        "[1] 扫地机器人100问.pdf（第2页）\n"
+        "[2] 维护保养.txt"
+    )
+
+    # 正文只使用[1]，末尾虽然列出[2]，但[2]不属于实际引用。
+    assert extract_cited_sources(answer) == (
+        "扫地机器人100问.pdf",
+    )
+
+    assert extract_cited_sources(
+        NO_CONTEXT_RESPONSE
+    ) == ()
+
+
+def test_nearest_rank_percentile_calculation():
+    """最近排名法应返回排序后对应位置的实际样本值。"""
+    values = [
+        10.0,
+        20.0,
+        30.0,
+        40.0,
+        50.0,
+    ]
+
+    assert (
+        calculate_nearest_rank_percentile(
+            values,
+            0.50,
+        )
+        == 30.0
+    )
+
+    assert (
+        calculate_nearest_rank_percentile(
+            values,
+            0.95,
+        )
+        == 50.0
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="至少需要一个数值",
+    ):
+        calculate_nearest_rank_percentile(
+            [],
+            0.95,
+        )
+
+def test_tool_routing_cases_cover_core_first_step_tools():
+    """路由评测应覆盖知识、天气、上下文和无需工具的场景。"""
+    expected_tool_sets = {
+        case.expected_tools
+        for case in (
+            evaluate_tool_routing
+            .TOOL_ROUTING_CASES
+        )
+    }
+
+    assert len(
+        evaluate_tool_routing.TOOL_ROUTING_CASES
+    ) == 12
+
+    assert ("rag_summarize",) in expected_tool_sets
+    assert ("get_weather",) in expected_tool_sets
+    assert ("get_user_location",) in expected_tool_sets
+    assert ("get_user_id",) in expected_tool_sets
+    assert ("get_current_month",) in expected_tool_sets
+    assert () in expected_tool_sets
+
+
+def test_tool_routing_extracts_tools_and_token_usage():
+    """路由辅助函数应正确读取工具名称和Token统计。"""
+    message = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "rag_summarize",
+                "args": {
+                    "query": "滤网维护",
+                },
+                "id": "tool-call-1",
+                "type": "tool_call",
+            }
+        ],
+        usage_metadata={
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+        },
+    )
+
+    assert (
+        evaluate_tool_routing
+        .extract_tool_names(message)
+    ) == ("rag_summarize",)
+
+    assert (
+        evaluate_tool_routing
+        .extract_token_usage(message)
+    ) == (100, 20, 120)
+
+    assert (
+        evaluate_tool_routing
+        .calculate_nearest_rank_percentile(
+            [100, 200, 300],
+            0.95,
+        )
+        == 300
     )
