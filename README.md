@@ -87,6 +87,7 @@ flowchart TD
 ├─ backend/               # FastAPI应用、数据契约、依赖与版本化路由
 ├─ config/                # Agent、RAG、Chroma 等非敏感配置
 ├─ data/                  # 本地知识文档和演示使用记录
+├─ docs/                  # 项目优化学习笔记和实习面试追问题库
 ├─ evaluation/            # 检索用例、离线指标和真实模型可回答性评估
 ├─ frontend/              # Streamlit使用的HTTP客户端和后端地址配置
 ├─ model/                 # 聊天模型与 Embedding 模型工厂
@@ -378,3 +379,8 @@ CI 使用测试专用的 DashScope 占位值，不保存真实 API Key，也不�
 ## 改造记录
 
 项目从原始版本开始的每项问题、修改内容、设计意义和验证结果均记录在 [`change.md`](change.md)。
+
+## 学习资料
+
+- [`docs/项目优化学习笔记.md`](docs/项目优化学习笔记.md)：从零解释P0至P3改造中的问题、原理、实验、踩坑和取舍。
+- [`docs/实习面试高频追问题库.md`](docs/实习面试高频追问题库.md)：提供项目介绍、RAG、Agent、评测、工程化和开放题的参考回答。
